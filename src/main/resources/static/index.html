@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能对话助手</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            margin: 0;
+            padding: 0;
+        }
+
+        .app-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .chat-container {
+            flex: 1;
+            height: 100vh;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .chat-tabs {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: #fafafa;
+            border-bottom: 1px solid #e0e0e0;
+            overflow-x: auto;
+        }
+
+        .tabs-list {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex: 1;
+            overflow-x: auto;
+            min-width: 0;
+        }
+
+        .tabs-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .chat-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 14px;
+            background: #f0f0f0;
+            color: #333;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+            border: 1px solid transparent;
+        }
+
+        .chat-tab.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .chat-tab .close-tab {
+            border: none;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0 2px;
+        }
+
+        .new-chat-button,
+        .close-all-button,
+        .close-others-button {
+            padding: 6px 12px;
+            border-radius: 14px;
+            border: 1px solid #667eea;
+            background: #fff;
+            color: #667eea;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .new-chat-button:hover:not(:disabled),
+        .close-all-button:hover:not(:disabled),
+        .close-others-button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+        }
+
+        .new-chat-button:disabled,
+        .close-all-button:disabled,
+        .close-others-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .close-all-button,
+        .close-others-button {
+            border-color: #ff4757;
+            color: #ff4757;
+        }
+
+        .close-all-button:hover:not(:disabled),
+        .close-others-button:hover:not(:disabled) {
+            background: #ff4757;
+            color: white;
+        }
+
+        .history-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .history-search {
+            margin-bottom: 12px;
+        }
+
+        .history-search-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .history-search-input:focus {
+            border-color: #667eea;
+        }
+
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .history-item {
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: #f5f5f5;
+            font-size: 13px;
+            color: #444;
+            cursor: pointer;
+            border: 1px solid #e0e0e0;
+            transition: all 0.2s;
+            word-break: break-word;
+        }
+
+        .history-item:hover {
+            background: #e8e8e8;
+            border-color: #667eea;
+        }
+
+        .history-item.opened {
+            background: #e3f2fd;
+            border-color: #667eea;
+        }
+
+        .history-item.opened:hover {
+            background: #bbdefb;
+        }
+
+        .history-item-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .history-item-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 4px;
+        }
+
+        .history-empty {
+            font-size: 13px;
+            color: #999;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .history-pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .pagination-button {
+            padding: 4px 8px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            background: white;
+            color: #333;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .pagination-button:hover:not(:disabled) {
+            background: #f5f5f5;
+            border-color: #667eea;
+        }
+
+        .pagination-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination-info {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message.assistant {
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.assistant .message-content.streaming {
+            border-left: 3px solid #667eea;
+        }
+
+        /* Markdown 样式 */
+        .message-content h1,
+        .message-content h2,
+        .message-content h3,
+        .message-content h4,
+        .message-content h5,
+        .message-content h6 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+
+        .message-content h1 { font-size: 1.5em; }
+        .message-content h2 { font-size: 1.3em; }
+        .message-content h3 { font-size: 1.1em; }
+
+        .message-content p {
+            margin: 0.5em 0;
+        }
+
+        .message-content ul,
+        .message-content ol {
+            margin: 0.5em 0;
+            padding-left: 1.5em;
+        }
+
+        .message-content li {
+            margin: 0.25em 0;
+        }
+
+        .message-content blockquote {
+            margin: 0.5em 0;
+            padding: 0.5em 1em;
+            border-left: 4px solid #667eea;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .message-content code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .message-content pre {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5em 0;
+            border: 1px solid #e0e0e0;
+        }
+
+        .message-content pre code {
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .message-content table {
+            border-collapse: collapse;
+            margin: 0.5em 0;
+            width: 100%;
+        }
+
+        .message-content th,
+        .message-content td {
+            border: 1px solid #e0e0e0;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        .message-content th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+
+        .message-content a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .message-content a:hover {
+            text-decoration: underline;
+        }
+
+        .message-content hr {
+            border: none;
+            border-top: 1px solid #e0e0e0;
+            margin: 1em 0;
+        }
+
+        .message-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+            margin: 0.5em 0;
+        }
+
+
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 6px;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: #667eea;
+            border-radius: 50%;
+            opacity: 0.6;
+            animation: typingBounce 1.2s infinite ease-in-out;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingBounce {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        .typing-text {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #667eea;
+            letter-spacing: 0.5px;
+            opacity: 0.85;
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+            resize: none;
+            min-height: 50px;
+            max-height: 150px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 24px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            min-width: 80px;
+        }
+
+        .send-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .send-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .stop-button {
+            padding: 12px 24px;
+            background: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            min-width: 80px;
+        }
+
+        .stop-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 71, 87, 0.4);
+        }
+
+        .stop-button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .stop-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .stop-button.hidden {
+            display: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+            font-size: 16px;
+        }
+
+        /* 滚动条样式 */
+        .chat-messages::-webkit-scrollbar,
+        .sidebar-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track,
+        .sidebar-content::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb,
+        .sidebar-content::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover,
+        .sidebar-content::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                🤖 智能对话助手
+            </div>
+            <div class="sidebar-content">
+                <div class="history-title">历史对话</div>
+                <div class="history-search">
+                    <input 
+                        type="text" 
+                        class="history-search-input" 
+                        id="historySearchInput" 
+                        placeholder="搜索对话..."
+                    />
+                </div>
+                <div class="history-list" id="historyList"></div>
+                <div class="history-pagination" id="historyPagination"></div>
+            </div>
+            <div class="sidebar-footer" style="padding: 15px; border-top: 1px solid #e0e0e0;">
+                <a href="/knowledge.html" style="display: block; text-align: center; padding: 10px; background: #667eea; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">📚 知识库管理</a>
+            </div>
+        </div>
+        <div class="chat-container">
+            <div class="chat-header">
+                对话窗口
+            </div>
+            <div class="chat-tabs">
+                <div class="tabs-list" id="chatTabs"></div>
+                <div class="tabs-actions">
+                    <button class="close-others-button" id="closeOthersButton" onclick="closeOtherConversations()" title="关闭其他对话">
+                        关闭其他
+                    </button>
+                    <button class="close-all-button" id="closeAllButton" onclick="closeAllConversations()" title="关闭所有对话">
+                        全部关闭
+                    </button>
+                    <button class="new-chat-button" id="newChatButton" onclick="createNewConversation()">
+                        新对话
+                    </button>
+                </div>
+            </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="empty-state">
+                开始对话吧！我可以帮你搜索信息、查看文件系统等。
+            </div>
+        </div>
+        <div class="chat-input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    class="chat-input" 
+                    id="chatInput" 
+                    placeholder="输入你的问题..."
+                    rows="1"
+                ></textarea>
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    发送
+                </button>
+                <button class="stop-button hidden" id="stopButton" onclick="stopMessage()">
+                    停止
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // HTML 转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // 行内 Markdown 处理（粗体、斜体、行内代码、链接）
+        function renderInlineMarkdown(text) {
+            if (!text) return '';
+            let result = text;
+            // 行内代码
+            result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
+            // 链接
+            result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+            // 粗体
+            result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            // 斜体
+            result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            return result;
+        }
+
+        // 渲染 Markdown（无外部依赖，满足基础格式）
+        function renderMarkdown(text) {
+            if (!text) return '';
+
+            // 先提取代码块，避免被其他规则影响
+            const codeBlocks = [];
+            let processed = text.replace(/```(\w+)?\n([\s\S]*?)```/g, function(_, lang, code) {
+                const index = codeBlocks.length;
+                codeBlocks.push({
+                    lang: lang || '',
+                    code: code || ''
+                });
+                return `@@CODEBLOCK_${index}@@`;
+            });
+
+            // 统一转义
+            processed = escapeHtml(processed);
+            const lines = processed.split(/\r?\n/);
+
+            let html = '';
+            let inUl = false;
+            let inOl = false;
+            let inBlockquote = false;
+
+            function closeLists() {
+                if (inUl) { html += '</ul>'; inUl = false; }
+                if (inOl) { html += '</ol>'; inOl = false; }
+            }
+
+            function closeBlockquote() {
+                if (inBlockquote) {
+                    html += '</blockquote>';
+                    inBlockquote = false;
+                }
+            }
+
+            lines.forEach(function(line) {
+                // 处理代码块占位符
+                const codeMatch = line.match(/^@@CODEBLOCK_(\d+)@@$/);
+                if (codeMatch) {
+                    closeLists();
+                    closeBlockquote();
+                    const block = codeBlocks[parseInt(codeMatch[1], 10)];
+                    const languageClass = block.lang ? ` class="language-${block.lang}"` : '';
+                    html += `<pre><code${languageClass}>${escapeHtml(block.code)}</code></pre>`;
+                    return;
+                }
+
+                // 空行
+                if (line.trim() === '') {
+                    closeLists();
+                    closeBlockquote();
+                    return;
+                }
+
+                // 标题
+                const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+                if (headingMatch) {
+                    closeLists();
+                    closeBlockquote();
+                    const level = headingMatch[1].length;
+                    const content = renderInlineMarkdown(headingMatch[2]);
+                    html += `<h${level}>${content}</h${level}>`;
+                    return;
+                }
+
+                // 引用
+                const quoteMatch = line.match(/^&gt;\s?(.*)$/);
+                if (quoteMatch) {
+                    closeLists();
+                    if (!inBlockquote) {
+                        html += '<blockquote>';
+                        inBlockquote = true;
+                    }
+                    html += `<p>${renderInlineMarkdown(quoteMatch[1])}</p>`;
+                    return;
+                }
+
+                // 无序列表
+                const ulMatch = line.match(/^(\*|\-|\+)\s*(.*)$/);
+                if (ulMatch) {
+                    closeBlockquote();
+                    if (!inUl) {
+                        html += '<ul>';
+                        inUl = true;
+                    }
+                    html += `<li>${renderInlineMarkdown(ulMatch[2])}</li>`;
+                    return;
+                }
+
+                // 有序列表
+                const olMatch = line.match(/^\d+\.\s*(.*)$/);
+                if (olMatch) {
+                    closeBlockquote();
+                    if (!inOl) {
+                        html += '<ol>';
+                        inOl = true;
+                    }
+                    html += `<li>${renderInlineMarkdown(olMatch[1])}</li>`;
+                    return;
+                }
+
+                // 普通段落
+                closeLists();
+                closeBlockquote();
+                html += `<p>${renderInlineMarkdown(line)}</p>`;
+            });
+
+            closeLists();
+            closeBlockquote();
+            return html;
+        }
+
+        // 预留接口：未来可接入高亮库
+        function highlightCodeBlocks() {
+            // 无外部依赖时不处理
+        }
+
+        const conversations = new Map();
+        const historyConversations = [];
+        let activeConversationId = null;
+        let currentHistoryPage = 1;
+        let currentHistoryPageSize = 20;
+        let currentHistoryKeyword = '';
+        let currentHistoryTotal = 0;
+        let currentHistoryTotalPages = 0;
+        let currentEventSource = null;
+        let currentAssistantMessage = null;
+        let currentAssistantMessageIndex = null;
+        let currentTypingIndicator = null;
+        let currentTypingText = null;
+        let currentReader = null; // 用于取消流式请求
+        let isStreaming = false; // 标记是否正在流式传输
+        let currentMarkdownContent = ''; // 当前markdown内容（用于流式更新）
+
+        // 生成会话ID
+        function generateConversationId() {
+            return 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        }
+
+        function getActiveConversation() {
+            return conversations.get(activeConversationId);
+        }
+
+        function createNewConversation() {
+            if (isStreaming) {
+                stopMessage();
+            }
+            const id = generateConversationId();
+            const conversation = {
+                id,
+                title: '新对话',
+                messages: [],
+                createdAt: Date.now()
+            };
+            conversations.set(id, conversation);
+            setActiveConversation(id);
+        }
+
+        function setActiveConversation(id) {
+            if (isStreaming) {
+                stopMessage();
+            }
+            activeConversationId = id;
+            currentAssistantMessage = null;
+            currentAssistantMessageIndex = null;
+            currentMarkdownContent = '';
+            renderTabs();
+            renderConversationMessages();
+            // 更新历史列表显示状态（标记已打开的对话）
+            renderHistory();
+        }
+
+        function closeConversation(id) {
+            if (!conversations.has(id)) {
+                return;
+            }
+            const conversation = conversations.get(id);
+            conversations.delete(id);
+            // 关闭后重新加载历史列表（从后端获取最新数据）
+            if (activeConversationId === id) {
+                const next = conversations.keys().next().value;
+                if (next) {
+                    setActiveConversation(next);
+                } else {
+                    createNewConversation();
+                }
+            } else {
+                renderTabs();
+            }
+            // 重新加载历史列表
+            loadHistoryFromBackend();
+        }
+
+        function closeAllConversations() {
+            if (conversations.size === 0) {
+                return;
+            }
+            if (isStreaming) {
+                stopMessage();
+            }
+            conversations.clear();
+            createNewConversation();
+            // 重新加载历史列表
+            loadHistoryFromBackend();
+        }
+
+        function closeOtherConversations() {
+            if (conversations.size <= 1 || !activeConversationId) {
+                return;
+            }
+            if (isStreaming) {
+                stopMessage();
+            }
+            const idsToClose = Array.from(conversations.keys()).filter(id => id !== activeConversationId);
+            idsToClose.forEach(id => {
+                conversations.delete(id);
+            });
+            renderTabs();
+            // 重新加载历史列表
+            loadHistoryFromBackend();
+        }
+
+        async function reopenConversation(id) {
+            const summary = historyConversations.find(item => item.id === id);
+            if (!summary) {
+                return;
+            }
+            // 如果对话已经打开，直接切换过去
+            if (conversations.has(id)) {
+                setActiveConversation(id);
+                return;
+            }
+            const conversation = await fetchConversationFromBackend(summary.id, summary.title);
+            if (conversation) {
+                conversations.set(conversation.id, conversation);
+                setActiveConversation(conversation.id);
+                // 不删除历史列表项，保持历史列表完整
+                renderHistory();
+            }
+        }
+
+        function renderTabs() {
+            const tabsContainer = document.getElementById('chatTabs');
+            tabsContainer.innerHTML = '';
+            conversations.forEach((conversation) => {
+                const tab = document.createElement('div');
+                tab.className = 'chat-tab' + (conversation.id === activeConversationId ? ' active' : '');
+                tab.addEventListener('click', () => setActiveConversation(conversation.id));
+
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = conversation.title || '对话';
+                tab.appendChild(titleSpan);
+
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'close-tab';
+                closeBtn.textContent = '×';
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeConversation(conversation.id);
+                });
+                tab.appendChild(closeBtn);
+
+                tabsContainer.appendChild(tab);
+            });
+            
+            // 更新按钮状态
+            const closeAllBtn = document.getElementById('closeAllButton');
+            const closeOthersBtn = document.getElementById('closeOthersButton');
+            if (closeAllBtn) {
+                closeAllBtn.disabled = conversations.size === 0;
+            }
+            if (closeOthersBtn) {
+                closeOthersBtn.disabled = conversations.size <= 1;
+            }
+        }
+
+        function renderHistory() {
+            const historyList = document.getElementById('historyList');
+            historyList.innerHTML = '';
+            if (historyConversations.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'history-empty';
+                empty.textContent = '暂无历史对话';
+                historyList.appendChild(empty);
+                renderPagination();
+                return;
+            }
+            historyConversations.forEach((conversation) => {
+                const item = document.createElement('div');
+                const isOpened = conversations.has(conversation.id);
+                item.className = 'history-item' + (isOpened ? ' opened' : '');
+                
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'history-item-title';
+                let titleText = conversation.title || '历史对话';
+                if (isOpened) {
+                    titleText += ' (已打开)';
+                }
+                titleDiv.textContent = titleText;
+                item.appendChild(titleDiv);
+                
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'history-item-time';
+                const timeText = formatHistoryTime(conversation.createdAt, conversation.updatedAt);
+                timeDiv.textContent = timeText;
+                item.appendChild(timeDiv);
+                
+                item.addEventListener('click', () => reopenConversation(conversation.id));
+                historyList.appendChild(item);
+            });
+            renderPagination();
+        }
+
+        function formatHistoryTime(createdAt, updatedAt) {
+            if (!createdAt && !updatedAt) {
+                return '';
+            }
+            const created = createdAt ? new Date(createdAt) : null;
+            const updated = updatedAt ? new Date(updatedAt) : null;
+            
+            let text = '';
+            if (created) {
+                text += '开始: ' + formatDateTime(created);
+            }
+            // 如果有更新时间，总是显示最后时间（即使和创建时间相同）
+            if (updated) {
+                if (text) text += ' | ';
+                text += '最后: ' + formatDateTime(updated);
+            }
+            return text;
+        }
+
+        function formatDateTime(date) {
+            const now = new Date();
+            const diff = now - date;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            
+            if (days === 0) {
+                return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            } else if (days === 1) {
+                return '昨天 ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            } else if (days < 7) {
+                return days + '天前';
+            } else {
+                return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) + ' ' +
+                       date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            }
+        }
+
+        function renderPagination() {
+            const pagination = document.getElementById('historyPagination');
+            pagination.innerHTML = '';
+            
+            if (currentHistoryTotalPages <= 1) {
+                return;
+            }
+            
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'pagination-button';
+            prevBtn.textContent = '上一页';
+            prevBtn.disabled = currentHistoryPage <= 1;
+            prevBtn.addEventListener('click', () => {
+                if (currentHistoryPage > 1) {
+                    currentHistoryPage--;
+                    loadHistoryFromBackend();
+                }
+            });
+            pagination.appendChild(prevBtn);
+            
+            const info = document.createElement('span');
+            info.className = 'pagination-info';
+            info.textContent = `第 ${currentHistoryPage} / ${currentHistoryTotalPages} 页 (共 ${currentHistoryTotal} 条)`;
+            pagination.appendChild(info);
+            
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'pagination-button';
+            nextBtn.textContent = '下一页';
+            nextBtn.disabled = currentHistoryPage >= currentHistoryTotalPages;
+            nextBtn.addEventListener('click', () => {
+                if (currentHistoryPage < currentHistoryTotalPages) {
+                    currentHistoryPage++;
+                    loadHistoryFromBackend();
+                }
+            });
+            pagination.appendChild(nextBtn);
+        }
+
+        function renderConversationMessages() {
+            const messagesContainer = document.getElementById('chatMessages');
+            messagesContainer.innerHTML = '';
+            const conversation = getActiveConversation();
+            if (!conversation || conversation.messages.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.textContent = '开始对话吧！我可以帮你搜索信息、查看文件系统等。';
+                messagesContainer.appendChild(emptyState);
+                return;
+            }
+            conversation.messages.forEach(message => {
+                addMessage(message.role, message.content, false);
+            });
+        }
+
+        async function updateConversationTitleIfNeeded(message) {
+            const conversation = getActiveConversation();
+            if (!conversation) {
+                return;
+            }
+            if (conversation.title === '新对话' && message) {
+                const newTitle = message.length > 12 ? message.slice(0, 12) + '…' : message;
+                conversation.title = newTitle;
+                renderTabs();
+                // 保存标题到后端
+                try {
+                    await fetch(`/api/chat/conversations/${conversation.id}/title`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: newTitle })
+                    });
+                } catch (error) {
+                    console.warn('保存标题失败:', error);
+                }
+                // 如果当前在历史列表的第一页，刷新历史列表
+                if (currentHistoryPage === 1 && !currentHistoryKeyword) {
+                    loadHistoryFromBackend();
+                }
+            }
+        }
+
+        function deriveTitleFromMessages(messages) {
+            const firstUser = messages.find(msg => msg.role === 'user' && msg.content);
+            if (!firstUser) {
+                return '历史对话';
+            }
+            return firstUser.content.length > 12 ? firstUser.content.slice(0, 12) + '…' : firstUser.content;
+        }
+
+        async function loadHistoryFromBackend() {
+            try {
+                const params = new URLSearchParams({
+                    page: currentHistoryPage.toString(),
+                    pageSize: currentHistoryPageSize.toString()
+                });
+                if (currentHistoryKeyword) {
+                    params.append('keyword', currentHistoryKeyword);
+                }
+                const response = await fetch(`/api/chat/conversations?${params}`);
+                if (!response.ok) {
+                    return;
+                }
+                const data = await response.json();
+                historyConversations.length = 0;
+                if (data.conversations) {
+                    data.conversations.forEach(item => {
+                        historyConversations.push({
+                            id: item.conversationId,
+                            title: item.title || '历史对话',
+                            messageCount: item.messageCount || 0,
+                            createdAt: item.createdAt,
+                            updatedAt: item.updatedAt
+                        });
+                    });
+                }
+                currentHistoryTotal = data.total || 0;
+                currentHistoryTotalPages = data.totalPages || 0;
+                renderHistory();
+            } catch (error) {
+                console.warn('加载历史对话失败:', error);
+            }
+        }
+
+        async function fetchConversationFromBackend(conversationId, fallbackTitle) {
+            try {
+                const response = await fetch(`/api/chat/conversations/${conversationId}`);
+                if (!response.ok) {
+                    return null;
+                }
+                const detail = await response.json();
+                const messages = detail.messages || [];
+                const normalizedMessages = messages
+                    .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+                    .map(msg => ({ role: msg.role, content: msg.content || '' }));
+                return {
+                    id: conversationId,
+                    title: normalizedMessages.length ? deriveTitleFromMessages(normalizedMessages) : (fallbackTitle || '历史对话'),
+                    messages: normalizedMessages,
+                    createdAt: Date.now()
+                };
+            } catch (error) {
+                console.warn('加载对话详情失败:', error);
+                return null;
+            }
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) {
+                return;
+            }
+            if (!activeConversationId) {
+                createNewConversation();
+            }
+
+            // 禁用输入和按钮
+            input.disabled = true;
+            const sendButton = document.getElementById('sendButton');
+            const stopButton = document.getElementById('stopButton');
+            sendButton.disabled = true;
+            
+            // 显示停止按钮，隐藏发送按钮
+            sendButton.classList.add('hidden');
+            stopButton.classList.remove('hidden');
+            stopButton.disabled = false;
+            
+            // 设置流式传输状态
+            isStreaming = true;
+
+            // 显示用户消息
+            addMessage('user', message, true);
+            updateConversationTitleIfNeeded(message);
+            input.value = '';
+
+            // 创建助手消息占位符
+            const assistantResult = addMessage('assistant', '', true);
+            currentAssistantMessage = assistantResult.messageDiv;
+            currentAssistantMessageIndex = assistantResult.index;
+            const assistantContent = currentAssistantMessage.querySelector('.message-content');
+            assistantContent.classList.add('streaming');
+            currentTypingIndicator = addTypingIndicator(assistantContent);
+            currentTypingText = addTypingText(currentAssistantMessage);
+            currentMarkdownContent = ''; // 重置markdown内容
+
+            try {
+                // 调用流式接口
+                await streamChat(message);
+            } catch (error) {
+                console.error('Error:', error);
+                // 只有在非用户主动停止的情况下才显示错误
+                if (isStreaming) {
+                    const errorMessage = '抱歉，发生了错误：' + error.message;
+                    if (currentAssistantMessage) {
+                        const contentDiv = currentAssistantMessage.querySelector('.message-content');
+                        currentMarkdownContent += errorMessage;
+                        contentDiv.innerHTML = renderMarkdown(currentMarkdownContent);
+                        highlightCodeBlocks(contentDiv);
+                        const conversation = getActiveConversation();
+                        if (conversation && currentAssistantMessageIndex !== null && conversation.messages[currentAssistantMessageIndex]) {
+                            conversation.messages[currentAssistantMessageIndex].content = currentMarkdownContent;
+                        }
+                    }
+                }
+            } finally {
+                // 重置流式传输状态
+                isStreaming = false;
+                
+                // 恢复输入和按钮
+                input.disabled = false;
+                sendButton.disabled = false;
+                
+                // 隐藏停止按钮，显示发送按钮
+                stopButton.classList.add('hidden');
+                sendButton.classList.remove('hidden');
+                
+                input.focus();
+                
+                if (currentAssistantMessage) {
+                    const content = currentAssistantMessage.querySelector('.message-content');
+                    content.classList.remove('streaming');
+                }
+                removeTypingIndicator();
+                removeTypingText();
+            }
+        }
+
+        // 停止消息
+        function stopMessage() {
+            if (!isStreaming) {
+                return;
+            }
+            
+            console.log('用户主动停止对话');
+            
+            // 设置停止标志
+            isStreaming = false;
+            
+            // 取消流式读取
+            if (currentReader) {
+                currentReader.cancel().catch(err => {
+                    console.log('取消流式读取:', err);
+                });
+                currentReader = null;
+            }
+            
+            // 关闭之前的连接
+            if (currentEventSource) {
+                currentEventSource.close();
+                currentEventSource = null;
+            }
+            
+            // 更新助手消息，添加停止提示
+            if (currentAssistantMessage) {
+                const contentDiv = currentAssistantMessage.querySelector('.message-content');
+                let storedContent = currentMarkdownContent;
+                if (currentMarkdownContent.trim() === '') {
+                    storedContent = '对话已停止';
+                    contentDiv.innerHTML = renderMarkdown(storedContent);
+                } else {
+                    // 添加停止提示并重新渲染markdown
+                    const finalContent = currentMarkdownContent + '\n\n*对话已停止*';
+                    contentDiv.innerHTML = renderMarkdown(finalContent);
+                    highlightCodeBlocks(contentDiv);
+                }
+                contentDiv.classList.remove('streaming');
+                const conversation = getActiveConversation();
+                if (conversation && currentAssistantMessageIndex !== null && conversation.messages[currentAssistantMessageIndex]) {
+                    conversation.messages[currentAssistantMessageIndex].content = storedContent;
+                }
+            }
+            
+            // 移除加载指示器
+            removeTypingIndicator();
+            removeTypingText();
+            
+            // 恢复UI状态
+            const input = document.getElementById('chatInput');
+            const sendButton = document.getElementById('sendButton');
+            const stopButton = document.getElementById('stopButton');
+            
+            input.disabled = false;
+            sendButton.disabled = false;
+            stopButton.classList.add('hidden');
+            sendButton.classList.remove('hidden');
+            input.focus();
+        }
+
+        // 流式聊天
+        async function streamChat(message) {
+            // 关闭之前的连接
+            if (currentEventSource) {
+                currentEventSource.close();
+            }
+
+            return new Promise((resolve, reject) => {
+                const url = `/api/chat/stream`;
+                
+                console.log('发送请求:', { message, conversationId: activeConversationId });
+                
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'text/event-stream'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        conversationId: activeConversationId
+                    })
+                })
+                .then(response => {
+                    console.log('收到响应:', response.status, response.statusText);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const reader = response.body.getReader();
+                    currentReader = reader; // 保存reader引用以便取消
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let eventType = null;
+
+                    function readStream() {
+                        // 检查是否已停止
+                        if (!isStreaming) {
+                            console.log('流式响应已停止');
+                            reader.cancel().catch(() => {});
+                            resolve();
+                            return;
+                        }
+                        
+                        reader.read().then(({ done, value }) => {
+                            // 再次检查是否已停止
+                            if (!isStreaming) {
+                                console.log('流式响应已停止');
+                                reader.cancel().catch(() => {});
+                                resolve();
+                                return;
+                            }
+                            
+                            if (done) {
+                                console.log('流式响应完成');
+                                currentReader = null;
+                                resolve();
+                                return;
+                            }
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split(/\r?\n/);
+                            buffer = lines.pop() || ''; // 保留最后一个不完整的行
+
+                            let eventType = null;
+                            let eventData = '';
+
+                            for (const rawLine of lines) {
+                                const line = rawLine.trimEnd();
+
+                                if (line === '') {
+                                    // 事件结束，处理数据
+                                    if (eventType === 'done') {
+                                        currentReader = null;
+                                        resolve();
+                                        return;
+                                    }
+                                    if (eventType === 'error' && eventData) {
+                                        updateAssistantMessage('错误: ' + eventData);
+                                    } else if (eventData) {
+                                        updateAssistantMessage(eventData);
+                                    }
+                                    eventType = null;
+                                    eventData = '';
+                                    continue;
+                                }
+
+                                if (line.startsWith('event:')) {
+                                    eventType = line.slice(6).trimStart();
+                                    continue;
+                                }
+
+                                if (line.startsWith('data:')) {
+                                    const data = line.slice(5).trimStart();
+                                    eventData += (eventData ? '\n' : '') + data;
+                                }
+                            }
+
+                            readStream();
+                        }).catch(err => {
+                            // 如果是用户主动取消，不视为错误
+                            if (!isStreaming) {
+                                console.log('流式响应已停止');
+                                currentReader = null;
+                                resolve();
+                                return;
+                            }
+                            console.error('读取流时出错:', err);
+                            currentReader = null;
+                            reject(err);
+                        });
+                    }
+
+                    readStream();
+                })
+                .catch(err => {
+                    // 如果是用户主动取消，不视为错误
+                    if (!isStreaming) {
+                        console.log('流式响应已停止');
+                        resolve();
+                        return;
+                    }
+                    console.error('请求失败:', err);
+                    currentReader = null;
+                    reject(err);
+                });
+            });
+        }
+
+        // 添加消息
+        function addMessage(role, content, store) {
+            const messagesContainer = document.getElementById('chatMessages');
+            
+            // 移除空状态提示
+            const emptyState = messagesContainer.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            // 如果是助手消息，使用markdown渲染；用户消息保持纯文本
+            if (role === 'assistant' && content) {
+                contentDiv.innerHTML = renderMarkdown(content);
+                // 高亮代码块
+                highlightCodeBlocks(contentDiv);
+            } else {
+                contentDiv.textContent = content;
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+            
+            // 滚动到底部
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            let index = null;
+            if (store !== false) {
+                const conversation = getActiveConversation();
+                if (conversation) {
+                    conversation.messages.push({ role, content });
+                    index = conversation.messages.length - 1;
+                }
+            }
+            
+            return { messageDiv, index };
+        }
+
+        // 更新助手消息（流式追加）
+        function updateAssistantMessage(text) {
+            if (currentAssistantMessage) {
+                const contentDiv = currentAssistantMessage.querySelector('.message-content');
+                // 累积markdown内容
+                currentMarkdownContent += text;
+                
+                // 渲染markdown（流式更新时也实时渲染）
+                contentDiv.innerHTML = renderMarkdown(currentMarkdownContent);
+                // 高亮代码块
+                highlightCodeBlocks(contentDiv);
+
+                const conversation = getActiveConversation();
+                if (conversation && currentAssistantMessageIndex !== null && conversation.messages[currentAssistantMessageIndex]) {
+                    conversation.messages[currentAssistantMessageIndex].content = currentMarkdownContent;
+                }
+                
+                // 滚动到底部
+                const messagesContainer = document.getElementById('chatMessages');
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            } else {
+                console.warn('currentAssistantMessage 为空，无法更新消息');
+            }
+        }
+
+        // 添加加载动画
+        function addTypingIndicator(container) {
+            const indicator = document.createElement('span');
+            indicator.className = 'typing-indicator';
+            indicator.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+            container.appendChild(indicator);
+            return indicator;
+        }
+
+        // 移除加载动画
+        function removeTypingIndicator() {
+            if (currentTypingIndicator && currentTypingIndicator.parentNode) {
+                currentTypingIndicator.parentNode.removeChild(currentTypingIndicator);
+            }
+            currentTypingIndicator = null;
+        }
+
+        // 添加“正在输入...”提示
+        function addTypingText(messageContainer) {
+            const text = document.createElement('div');
+            text.className = 'typing-text';
+            text.textContent = '正在输入...';
+            messageContainer.appendChild(text);
+            return text;
+        }
+
+        // 移除“正在输入...”提示
+        function removeTypingText() {
+            if (currentTypingText && currentTypingText.parentNode) {
+                currentTypingText.parentNode.removeChild(currentTypingText);
+            }
+            currentTypingText = null;
+        }
+
+        // 搜索功能
+        const searchInput = document.getElementById('historySearchInput');
+        let searchTimeout = null;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentHistoryKeyword = this.value.trim();
+                currentHistoryPage = 1;
+                loadHistoryFromBackend();
+            }, 300);
+        });
+
+        // 初始化加载历史并创建新对话
+        loadHistoryFromBackend().finally(() => {
+            createNewConversation();
+            renderTabs(); // 确保按钮状态正确
+        });
+
+        // 回车发送（Shift+Enter 换行）
+        document.getElementById('chatInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // 自动调整输入框高度
+        document.getElementById('chatInput').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+        });
+    </script>
+</body>
+</html>

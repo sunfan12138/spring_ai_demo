@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识库管理</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        h2 {
+            margin-top: 0;
+            color: #1a1a1a;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        input[type="text"], input[type="file"], input[type="number"], textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .result-item {
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        .result-meta {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .result-content {
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .nav-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="nav-link">← 返回对话助手</a>
+    
+    <div class="container">
+        <!-- 上传文件 -->
+        <div class="card">
+            <h2>上传文档</h2>
+            <div class="form-group">
+                <label>选择文件</label>
+                <input type="file" id="docFile">
+            </div>
+            <div class="form-group">
+                <label>分类 (Category)</label>
+                <input type="text" id="docCategory" placeholder="例如：技术文档">
+            </div>
+            <button onclick="uploadDocument()">上传文档</button>
+            <div id="docUploadStatus" style="margin-top: 10px;"></div>
+        </div>
+
+        <!-- 上传文本 -->
+        <div class="card">
+            <h2>上传文本</h2>
+            <div class="form-group">
+                <label>内容</label>
+                <textarea id="textContent" placeholder="请输入要存储的文本内容..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>元数据 (JSON格式)</label>
+                <input type="text" id="textMetadata" placeholder='{"source": "手动录入", "category": "FAQ"}'>
+            </div>
+            <button onclick="uploadText()">上传文本</button>
+            <div id="textUploadStatus" style="margin-top: 10px;"></div>
+        </div>
+
+        <!-- 搜索与管理 -->
+        <div class="card full-width">
+            <h2>知识库检索与管理</h2>
+            <div class="form-group" style="display: flex; gap: 10px;">
+                <input type="text" id="searchQuery" placeholder="输入关键词搜索..." style="flex: 1;">
+                <input type="number" id="topK" value="5" style="width: 80px;" title="返回数量">
+                <button onclick="searchKnowledge()">搜索</button>
+            </div>
+            <div id="searchResults"></div>
+        </div>
+    </div>
+
+    <script>
+        async function uploadDocument() {
+            const fileInput = document.getElementById('docFile');
+            const categoryInput = document.getElementById('docCategory');
+            const statusDiv = document.getElementById('docUploadStatus');
+
+            if (!fileInput.files[0]) {
+                statusDiv.innerHTML = '<span style="color: red;">请选择文件</span>';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            if (categoryInput.value) {
+                formData.append('category', categoryInput.value);
+            }
+
+            statusDiv.innerHTML = '上传中...';
+
+            try {
+                const response = await fetch('/api/knowledge/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusDiv.innerHTML = `<span style="color: green;">${result.message} (块数: ${result.documentCount})</span>`;
+                    fileInput.value = ''; // 清空选择
+                } else {
+                    statusDiv.innerHTML = `<span style="color: red;">${result.message}</span>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span style="color: red;">请求失败: ${error.message}</span>`;
+            }
+        }
+
+        async function uploadText() {
+            const textInput = document.getElementById('textContent');
+            const metadataInput = document.getElementById('textMetadata');
+            const statusDiv = document.getElementById('textUploadStatus');
+
+            if (!textInput.value.trim()) {
+                statusDiv.innerHTML = '<span style="color: red;">请输入内容</span>';
+                return;
+            }
+
+            let metadata = {};
+            try {
+                if (metadataInput.value.trim()) {
+                    metadata = JSON.parse(metadataInput.value);
+                }
+            } catch (e) {
+                statusDiv.innerHTML = '<span style="color: red;">元数据格式错误 (必须是JSON)</span>';
+                return;
+            }
+
+            statusDiv.innerHTML = '上传中...';
+
+            try {
+                const response = await fetch('/api/knowledge/upload-text', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: textInput.value,
+                        metadata: metadata
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusDiv.innerHTML = `<span style="color: green;">${result.message} (块数: ${result.documentCount})</span>`;
+                    textInput.value = '';
+                } else {
+                    statusDiv.innerHTML = `<span style="color: red;">${result.message}</span>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span style="color: red;">请求失败: ${error.message}</span>`;
+            }
+        }
+
+        async function searchKnowledge() {
+            const queryInput = document.getElementById('searchQuery');
+            const topKInput = document.getElementById('topK');
+            const resultsDiv = document.getElementById('searchResults');
+
+            if (!queryInput.value.trim()) {
+                alert('请输入搜索关键词');
+                return;
+            }
+
+            resultsDiv.innerHTML = '搜索中...';
+
+            try {
+                const response = await fetch(`/api/knowledge/search?query=${encodeURIComponent(queryInput.value)}&topK=${topKInput.value}`);
+                const results = await response.json();
+
+                if (results.length === 0) {
+                    resultsDiv.innerHTML = '未找到相关内容';
+                    return;
+                }
+
+                resultsDiv.innerHTML = results.map((item, index) => {
+                    const metadataStr = JSON.stringify(item.metadata);
+                    const similarity = item.similarity ? (item.similarity * 100).toFixed(2) + '%' : 'N/A';
+                    // 尝试从元数据中获取标识符用于删除，这里假设有 filename
+                    const filename = item.metadata.filename || '';
+                    
+                    return `
+                        <div class="result-item">
+                            <div class="result-meta">
+                                <span>相似度: ${similarity} | 来源: ${filename || '未知'}</span>
+                                ${filename ? `<button onclick='deleteByFilename("${filename}")' style="padding: 2px 8px; font-size: 12px; background: #e53e3e; color: white; border: none; border-radius: 3px; cursor: pointer;">删除文档</button>` : ''}
+                            </div>
+                            <div class="result-content">${escapeHtml(item.content)}</div>
+                            <div style="font-size: 11px; color: #999; margin-top: 5px;">Metadata: ${escapeHtml(metadataStr)}</div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                resultsDiv.innerHTML = `<span style="color: red;">搜索失败: ${error.message}</span>`;
+            }
+        }
+
+        async function deleteByFilename(filename) {
+            if (!confirm(`确定要删除文件 "${filename}" 的所有相关片段吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/knowledge/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: filename
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message);
+                    searchKnowledge(); // 刷新搜索结果
+                } else {
+                    alert(result.message);
+                }
+            } catch (error) {
+                alert('请求失败: ' + error.message);
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

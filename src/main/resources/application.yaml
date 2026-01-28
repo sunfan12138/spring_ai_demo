@@ -1,0 +1,120 @@
+spring:
+  application:
+    name: spring_ai_demo
+  # 允许 Bean 覆盖（用于解决编译缓存导致的重复 Bean 问题）
+  main:
+    allow-bean-definition-overriding: true
+  
+  # 数据库配置
+  datasource:
+    url: jdbc:mysql://172.16.40.244:3307/spring_ai?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  # OpenAI 配置（兼容智谱 AI）
+  ai:
+    openai:
+      # API 密钥配置：从环境变量读取，如果未设置则使用默认值（请替换为你的实际 API 密钥）
+      api-key: ${BAILIAN_API_KEY}
+      chat:
+        options:
+          model: deepseek-v3.2
+          temperature: 0.7
+        completions-path: /v1/chat/completions
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/
+
+    # 重试配置（处理 429 限流错误）
+    retry:
+      max-attempts: 3
+      backoff:
+        initial-interval: 2s
+        max-interval: 30s
+        multiplier: 2
+      on-client-errors: false  # 4xx 错误不重试（包括 429）
+      exclude-on-http-codes: 401,403  # 排除这些错误码的重试
+    
+    # 聊天记忆 JDBC 存储配置
+    chat:
+      memory:
+        repository:
+          jdbc:
+            # 控制何时初始化 schema: embedded(仅嵌入式数据库), always(总是), never(从不)
+            initialize-schema: always
+            # Schema 脚本位置（可选，使用默认值）
+            # schema: classpath:org/springframework/ai/chat/memory/repository/jdbc/schema-@@platform@@.sql
+            # 平台名称（如果使用 @@platform@@ 占位符，可选，默认自动检测）
+            # platform: mysql
+    
+    # MCP 服务器配置
+    # 注意：根据 ModelScope MCP 服务的特性，使用 SSE 传输
+    # URL 分割：
+    # - 完整 URL: https://mcp.api-inference.modelscope.net/31fb155e7b7843/mcp
+    # - 基本 URL: https://mcp.api-inference.modelscope.net
+    # - SSE 端点: /31fb155e7b7843/mcp
+    mcp:
+      client:
+        enabled: true
+        type: SYNC
+        request-timeout: 30s
+        toolcallback:
+          enabled: true
+        sse:
+          connections:
+            open-webSearch:
+              url: https://mcp.api-inference.modelscope.net
+              sse-endpoint: /1b30a3a7c6f94b/sse
+    
+    # Milvus 向量存储配置（知识库）
+    # Spring Boot 自动配置，无需手动创建 Bean
+    # 参考: https://docs.springjava.cn/spring-ai/reference/api/vectordbs/milvus.html
+    vectorstore:
+      milvus:
+        # 客户端配置
+        client:
+          host: localhost
+          port: 19530
+          username: root
+          password: Milvus
+        # 数据库和集合配置
+        database-name: default
+        collection-name: knowledge_base
+        # Schema 配置
+        initialize-schema: true  # 必须显式设置为 true 才会初始化 schema
+        embedding-dimension: 384  # ONNX 模型 (all-MiniLM-L6-v2) 默认为 384
+        # 索引配置
+        index-type: IVF_FLAT  # 可选: IVF_FLAT, HNSW, AUTOINDEX 等
+        metric-type: COSINE  # 可选: COSINE, L2, IP
+        # 索引参数（对于 IVF_FLAT，建议设置 nprobe）
+        index-parameters: '{"nlist":1024}'
+    
+    # Embedding 模型配置（用于生成向量）
+    # 注意：spring-ai-starter-model-openai 已包含 embedding 功能
+    # 如果使用兼容 OpenAI 的 API，配置与 chat 模型相同
+    embedding:
+      openai:
+        enabled: false # 禁用 OpenAI Embedding
+        api-key: ${BAILIAN_API_KEY}
+        base-url: https://dashscope.aliyuncs.com/compatible-mode/
+        embedding-options:
+          model: text-embedding-v3  # 根据实际模型调整，确保维度匹配
+      transformer:
+        enabled: true
+
+# 服务器配置
+server:
+  port: 8080
+
+# 日志配置
+logging:
+  level:
+    # Spring AI SimpleLoggerAdvisor 日志级别（需要设置为 DEBUG 才能看到日志）
+    org.springframework.ai.chat.client.advisor: DEBUG
+    # MCP 工具调用相关日志
+    org.springframework.ai.mcp: DEBUG
+    org.springframework.ai.model.tool: DEBUG
+    com.ifoodbuy.spring_ai_demo.tool: DEBUG
+    # 或者设置为根级别 DEBUG（如果上面的配置不生效）
+    root: INFO
+    # 项目日志级别
+    com.ifoodbuy.spring_ai_demo: INFO
