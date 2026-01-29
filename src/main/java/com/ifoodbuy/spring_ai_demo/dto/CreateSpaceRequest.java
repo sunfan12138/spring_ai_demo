@@ -4,13 +4,13 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
+/**
+ * 创建知识空间请求
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ConversationDetailResponse {
-
-    private String conversationId;
-    private List<MessageResponse> messages;
+public class CreateSpaceRequest {
+    /** 空间名称（全局唯一） */
+    private String name;
 }

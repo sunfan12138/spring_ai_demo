@@ -4,13 +4,15 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
+/**
+ * 删除文档响应
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ConversationDetailResponse {
-
-    private String conversationId;
-    private List<MessageResponse> messages;
+public class DeleteResponse {
+    /** 是否成功 */
+    private Boolean success;
+    /** 消息 */
+    private String message;
 }

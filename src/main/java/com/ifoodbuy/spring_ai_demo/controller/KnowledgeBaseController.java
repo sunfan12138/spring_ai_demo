@@ -1,9 +1,6 @@
 package com.ifoodbuy.spring_ai_demo.controller;
 
-import com.ifoodbuy.spring_ai_demo.dto.KnowledgeListResponse;
-import com.ifoodbuy.spring_ai_demo.dto.SearchKnowledgeResponse;
-import com.ifoodbuy.spring_ai_demo.dto.SearchResponse;
-import com.ifoodbuy.spring_ai_demo.dto.UploadDocumentRequest;
+import com.ifoodbuy.spring_ai_demo.dto.*;
 import com.ifoodbuy.spring_ai_demo.entity.KnowledgeDocument;
 import com.ifoodbuy.spring_ai_demo.entity.KnowledgeSpace;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeDocumentRepository;
@@ -43,7 +40,7 @@ public class KnowledgeBaseController {
      * 上传文档文件
      */
     @PostMapping("/upload")
-    public ResponseEntity<Map<String, Object>> uploadDocument(
+    public ResponseEntity<UploadResponse> uploadDocument(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "spaceId", required = false) Long spaceId,
             @RequestParam(value = "documentName", required = false) String documentName) throws IOException {
@@ -56,11 +53,12 @@ public class KnowledgeBaseController {
 
         int documentCount = knowledgeBaseService.uploadDocument(file, metadata);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "文档上传成功");
-        response.put("documentCount", documentCount);
-        response.put("filename", file.getOriginalFilename());
+        UploadResponse response = new UploadResponse(
+                true,
+                "文档上传成功",
+                documentCount,
+                file.getOriginalFilename()
+        );
 
         return ResponseEntity.ok(response);
     }
@@ -69,29 +67,37 @@ public class KnowledgeBaseController {
      * 上传文本内容
      */
     @PostMapping("/upload-text")
-    public ResponseEntity<Map<String, Object>> uploadText(@RequestBody UploadDocumentRequest request) {
+    public ResponseEntity<UploadResponse> uploadText(@RequestBody UploadDocumentRequest request) {
         try {
             int documentCount = knowledgeBaseService.uploadText(
                     request.getText(),
                     request.getMetadata()
             );
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "文本上传成功");
-            response.put("documentCount", documentCount);
+            UploadResponse response = new UploadResponse(
+                    true,
+                    "文本上传成功",
+                    documentCount,
+                    null
+            );
 
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", e.getMessage());
+            UploadResponse response = new UploadResponse(
+                    false,
+                    e.getMessage(),
+                    null,
+                    null
+            );
             return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
             log.error("文本上传失败", e);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "文本上传失败: " + e.getMessage());
+            UploadResponse response = new UploadResponse(
+                    false,
+                    "文本上传失败: " + e.getMessage(),
+                    null,
+                    null
+            );
             return ResponseEntity.status(500).body(response);
         }
     }
@@ -100,18 +106,20 @@ public class KnowledgeBaseController {
      * 删除文档
      */
     @PostMapping("/delete")
-    public ResponseEntity<Map<String, Object>> deleteDocument(@RequestBody Map<String, Object> metadata) {
+    public ResponseEntity<DeleteResponse> deleteDocument(@RequestBody Map<String, Object> metadata) {
         try {
             knowledgeBaseService.deleteByMetadata(metadata);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "删除请求已提交");
+            DeleteResponse response = new DeleteResponse(
+                    true,
+                    "删除请求已提交"
+            );
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("删除失败", e);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "删除失败: " + e.getMessage());
+            DeleteResponse response = new DeleteResponse(
+                    false,
+                    "删除失败: " + e.getMessage()
+            );
             return ResponseEntity.status(500).body(response);
         }
     }
@@ -120,10 +128,13 @@ public class KnowledgeBaseController {
      * 搜索知识库
      */
     @GetMapping("/search")
-    public ResponseEntity<?> search(
-            @RequestParam("query") String query,
-            @RequestParam(value = "topK", defaultValue = "5") int topK,
-            @RequestParam(value = "similarityThreshold", required = false) Double similarityThreshold) {
+    public ResponseEntity<SearchKnowledgeResponse> search(@ModelAttribute SearchRequest request) {
+        if (request.getQuery() == null || request.getQuery().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        String query = request.getQuery();
+        int topK = request.getTopK() != null ? request.getTopK() : 5;
+        Double similarityThreshold = request.getSimilarityThreshold();
         try {
             var searchResult = knowledgeBaseService.searchWithRewrite(query, topK, similarityThreshold);
             List<Document> documents = searchResult.documents();
@@ -200,9 +211,9 @@ public class KnowledgeBaseController {
      * 分页列出已上传知识库（扁平列表，用于左侧边栏）
      */
     @GetMapping("/list/paged")
-    public ResponseEntity<KnowledgeListResponse> listPaged(
-            @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "size", defaultValue = "20") int size) {
+    public ResponseEntity<KnowledgeListResponse> listPaged(@ModelAttribute PageRequest request) {
+        int page = request.getPage() != null ? request.getPage() : 0;
+        int size = request.getSize() != null ? request.getSize() : 20;
         if (page < 0) page = 0;
         if (size < 1 || size > 100) size = 20;
         long total = knowledgeDocumentRepository.count();
@@ -239,27 +250,47 @@ public class KnowledgeBaseController {
      * 新建知识空间（空间名全局唯一）
      */
     @PostMapping("/spaces")
-    public ResponseEntity<?> createSpace(@RequestBody Map<String, String> body) {
-        String name = body != null ? body.get("name") : null;
+    public ResponseEntity<SpaceResponse> createSpace(@RequestBody CreateSpaceRequest request) {
+        String name = request.getName();
         if (name == null || name.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "空间名称不能为空"));
+            SpaceResponse response = new SpaceResponse(
+                    false,
+                    "空间名称不能为空",
+                    null
+            );
+            return ResponseEntity.badRequest().body(response);
         }
         name = name.trim();
         if (knowledgeSpaceRepository.existsByName(name)) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "空间名称已存在，请使用其他名称"));
+            SpaceResponse response = new SpaceResponse(
+                    false,
+                    "空间名称已存在，请使用其他名称",
+                    null
+            );
+            return ResponseEntity.badRequest().body(response);
         }
         KnowledgeSpace space = knowledgeSpaceRepository.insert(name);
-        return ResponseEntity.ok(space);
+        SpaceResponse response = new SpaceResponse(
+                true,
+                "空间创建成功",
+                space
+        );
+        return ResponseEntity.ok(response);
     }
 
     /**
      * 修改知识空间名称（全局唯一）
      */
     @PutMapping("/spaces/{id}")
-    public ResponseEntity<?> updateSpace(@PathVariable long id, @RequestBody Map<String, String> body) {
-        String newName = body != null ? body.get("name") : null;
+    public ResponseEntity<SpaceResponse> updateSpace(@PathVariable long id, @RequestBody UpdateSpaceRequest request) {
+        String newName = request.getName();
         if (newName == null || newName.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "空间名称不能为空"));
+            SpaceResponse response = new SpaceResponse(
+                    false,
+                    "空间名称不能为空",
+                    null
+            );
+            return ResponseEntity.badRequest().body(response);
         }
         newName = newName.trim();
         Optional<KnowledgeSpace> existing = knowledgeSpaceRepository.findById(id);
@@ -268,23 +299,39 @@ public class KnowledgeBaseController {
         }
         KnowledgeSpace space = existing.get();
         if (newName.equals(space.getName())) {
-            return ResponseEntity.ok(space);
+            SpaceResponse response = new SpaceResponse(
+                    true,
+                    "空间名称未变化",
+                    space
+            );
+            return ResponseEntity.ok(response);
         }
         if (knowledgeSpaceRepository.existsByName(newName)) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "空间名称已存在，请使用其他名称"));
+            SpaceResponse response = new SpaceResponse(
+                    false,
+                    "空间名称已存在，请使用其他名称",
+                    null
+            );
+            return ResponseEntity.badRequest().body(response);
         }
         knowledgeSpaceRepository.updateName(id, newName);
-        return ResponseEntity.ok(knowledgeSpaceRepository.findById(id).orElse(space));
+        KnowledgeSpace updatedSpace = knowledgeSpaceRepository.findById(id).orElse(space);
+        SpaceResponse response = new SpaceResponse(
+                true,
+                "空间名称更新成功",
+                updatedSpace
+        );
+        return ResponseEntity.ok(response);
     }
 
     /**
      * 按空间 ID 分页列出文档（第二级列表）
      */
     @GetMapping("/list/by-space")
-    public ResponseEntity<KnowledgeListResponse> listBySpace(
-            @RequestParam("spaceId") Long spaceId,
-            @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "size", defaultValue = "20") int size) {
+    public ResponseEntity<KnowledgeListResponse> listBySpace(@ModelAttribute ListBySpaceRequest request) {
+        Long spaceId = request.getSpaceId();
+        int page = request.getPage() != null ? request.getPage() : 0;
+        int size = request.getSize() != null ? request.getSize() : 20;
         if (page < 0) page = 0;
         if (size < 1 || size > 100) size = 20;
         if (spaceId == null) {
@@ -365,10 +412,10 @@ public class KnowledgeBaseController {
      * 查看某文档在指定空间下的所有块（预览）
      */
     @GetMapping("/documents/chunks")
-    public ResponseEntity<?> getDocumentChunks(
-            @RequestParam("spaceId") Long spaceId,
-            @RequestParam("filename") String filename) {
+    public ResponseEntity<DocumentChunksResponse> getDocumentChunks(@ModelAttribute GetDocumentChunksRequest request) {
         try {
+            Long spaceId = request.getSpaceId();
+            String filename = request.getFilename();
             List<Document> chunks = knowledgeBaseService.searchChunksBySpaceIdAndFilename(spaceId, filename);
             List<SearchResponse> responses = chunks.stream()
                     .map(doc -> new SearchResponse(
@@ -377,7 +424,8 @@ public class KnowledgeBaseController {
                             null
                     ))
                     .collect(Collectors.toList());
-            return ResponseEntity.ok(responses);
+            DocumentChunksResponse response = new DocumentChunksResponse(responses);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("获取文档块失败", e);
             return ResponseEntity.status(500).build();

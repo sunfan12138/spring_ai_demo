@@ -3,6 +3,7 @@ package com.ifoodbuy.spring_ai_demo.controller;
 import com.ifoodbuy.spring_ai_demo.dto.ChatRequest;
 import com.ifoodbuy.spring_ai_demo.dto.ChatResponse;
 import com.ifoodbuy.spring_ai_demo.service.ChatService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,13 +22,10 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @RestController
 @RequestMapping("/api/chat")
+@RequiredArgsConstructor
 public class ChatController {
 
     private final ChatService chatService;
-
-    public ChatController(ChatService chatService) {
-        this.chatService = chatService;
-    }
 
     /**
      * 发送聊天消息（非流式）
@@ -36,7 +34,7 @@ public class ChatController {
      * @return 聊天响应
      */
     @PostMapping
-    public ResponseEntity<?> chat(@RequestBody ChatRequest request) {
+    public ResponseEntity<ChatResponse> chat(@RequestBody ChatRequest request) {
         // 如果没有提供会话ID，生成一个新的
         if (request.getConversationId() == null || request.getConversationId().isEmpty()) {
             request.setConversationId(UUID.randomUUID().toString());
@@ -143,14 +141,6 @@ public class ChatController {
         emitter.onTimeout(emitter::complete);
 
         return emitter;
-    }
-
-    /**
-     * 健康检查接口
-     */
-    @GetMapping("/health")
-    public ResponseEntity<String> health() {
-        return ResponseEntity.ok("Chat service is running");
     }
     
     /**

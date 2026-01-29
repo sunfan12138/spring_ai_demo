@@ -2,6 +2,7 @@ package com.ifoodbuy.spring_ai_demo.service;
 
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeDocumentRepository;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeSpaceRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.model.ChatModel;
@@ -32,31 +33,22 @@ import java.util.Map;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class KnowledgeBaseService {
 
     private final VectorStore vectorStore;
-    private final TextSplitter textSplitter;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeSpaceRepository knowledgeSpaceRepository;
     private final ChatModel chatModel;
 
-    public KnowledgeBaseService(VectorStore vectorStore,
-                                KnowledgeDocumentRepository knowledgeDocumentRepository,
-                                KnowledgeSpaceRepository knowledgeSpaceRepository,
-                                ChatModel chatModel) {
-        this.vectorStore = vectorStore;
-        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
-        this.knowledgeSpaceRepository = knowledgeSpaceRepository;
-        this.chatModel = chatModel;
-        // 使用 TokenTextSplitter builder 创建
-        // 对于 ONNX all-MiniLM-L6-v2 模型，最大 token 数为 512，因此设置 chunkSize 为 400 比较安全
-        this.textSplitter = TokenTextSplitter.builder()
-                .withChunkSize(400)
-                .withMinChunkSizeChars(100)  // 最小 chunk 字符数
-                .withMinChunkLengthToEmbed(50)  // 最小嵌入长度
-                .withKeepSeparator(false)  // 是否保留分隔符
-                .build();
-    }
+    // 使用 TokenTextSplitter builder 创建
+    // 对于 ONNX all-MiniLM-L6-v2 模型，最大 token 数为 512，因此设置 chunkSize 为 400 比较安全
+    private static final TextSplitter textSplitter = TokenTextSplitter.builder()
+            .withChunkSize(400)
+            .withMinChunkSizeChars(100)  // 最小 chunk 字符数
+            .withMinChunkLengthToEmbed(50)  // 最小嵌入长度
+            .withKeepSeparator(false)  // 是否保留分隔符
+            .build();
 
     /**
      * 上传文档到知识库
@@ -290,9 +282,9 @@ public class KnowledgeBaseService {
     }
 
     /**
-         * 搜索结果信息
-         */
-        public record SearchResult(String originalQuery, String rewrittenQuery, List<Document> documents) {
+     * 搜索结果信息
+     */
+    public record SearchResult(String originalQuery, String rewrittenQuery, List<Document> documents) {
     }
 
     /**

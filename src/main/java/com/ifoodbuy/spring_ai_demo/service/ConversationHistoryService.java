@@ -1,11 +1,12 @@
 package com.ifoodbuy.spring_ai_demo.service;
 
-import com.ifoodbuy.spring_ai_demo.dto.ConversationDetail;
+import com.ifoodbuy.spring_ai_demo.dto.ConversationDetailResponse;
 import com.ifoodbuy.spring_ai_demo.dto.ConversationListResponse;
-import com.ifoodbuy.spring_ai_demo.dto.ConversationSummary;
-import com.ifoodbuy.spring_ai_demo.dto.MessageDto;
+import com.ifoodbuy.spring_ai_demo.dto.ConversationSummaryResponse;
+import com.ifoodbuy.spring_ai_demo.dto.MessageResponse;
 import com.ifoodbuy.spring_ai_demo.entity.ConversationMetadata;
 import com.ifoodbuy.spring_ai_demo.repository.ConversationMetadataRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
@@ -17,32 +18,26 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class ConversationHistoryService {
 
     private final ChatMemoryRepository chatMemoryRepository;
     private final ConversationMetadataRepository metadataRepository;
-
-    public ConversationHistoryService(
-            ChatMemoryRepository chatMemoryRepository,
-            ConversationMetadataRepository metadataRepository) {
-        this.chatMemoryRepository = chatMemoryRepository;
-        this.metadataRepository = metadataRepository;
-    }
 
     public ConversationListResponse listConversations(String keyword, int page, int pageSize) {
         long total = metadataRepository.count(keyword);
         int offset = (page - 1) * pageSize;
         List<ConversationMetadata> metadataList = metadataRepository.findAll(keyword, offset, pageSize);
         
-        List<ConversationSummary> summaries = new ArrayList<>();
+        List<ConversationSummaryResponse> summaries = new ArrayList<>();
         for (ConversationMetadata metadata : metadataList) {
-            int count = 0;
+            int count;
             LocalDateTime lastMessageTime = null;
             try {
                 List<Message> messages = chatMemoryRepository.findByConversationId(metadata.getConversationId());
-                count = messages != null ? messages.size() : 0;
+                count = messages.size();
                 // 如果有消息，尝试从消息的metadata中获取时间，或者使用当前时间
-                if (count > 0 && messages != null) {
+                if (count > 0) {
                     // Spring AI的消息可能没有直接的时间戳，使用updatedAt或当前时间
                     lastMessageTime = metadata.getUpdatedAt();
                 }
@@ -53,7 +48,7 @@ public class ConversationHistoryService {
             // 使用最后消息时间，如果没有则使用metadata的updatedAt
             LocalDateTime finalUpdatedAt = lastMessageTime != null ? lastMessageTime : metadata.getUpdatedAt();
             
-            summaries.add(new ConversationSummary(
+            summaries.add(new ConversationSummaryResponse(
                     metadata.getConversationId(),
                     metadata.getTitle(),
                     count,
@@ -66,12 +61,12 @@ public class ConversationHistoryService {
         return new ConversationListResponse(summaries, total, page, pageSize, totalPages);
     }
 
-    public ConversationDetail getConversation(String conversationId) {
+    public ConversationDetailResponse getConversation(String conversationId) {
         List<Message> messages = chatMemoryRepository.findByConversationId(conversationId);
-        List<MessageDto> messageDtos = messages != null ? messages.stream()
-                .map(this::toDto)
-                .collect(Collectors.toList()) : List.of();
-        return new ConversationDetail(conversationId, messageDtos);
+        List<MessageResponse> messageResponses = messages.stream()
+                        .map(this::toDto)
+                        .collect(Collectors.toList());
+        return new ConversationDetailResponse(conversationId, messageResponses);
     }
 
     @Transactional
@@ -93,9 +88,10 @@ public class ConversationHistoryService {
         metadataRepository.updateTitle(conversationId, title);
     }
 
-    private MessageDto toDto(Message message) {
-        String role = message.getMessageType() != null ? message.getMessageType().getValue() : "unknown";
+    private MessageResponse toDto(Message message) {
+        message.getMessageType();
+        String role = message.getMessageType().getValue();
         String content = message.getText();
-        return new MessageDto(role, content);
+        return new MessageResponse(role, content);
     }
 }

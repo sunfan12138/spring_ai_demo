@@ -6,11 +6,13 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * 文档块列表响应
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ConversationDetailResponse {
-
-    private String conversationId;
-    private List<MessageResponse> messages;
+public class DocumentChunksResponse {
+    /** 文档块列表 */
+    private List<SearchResponse> chunks;
 }

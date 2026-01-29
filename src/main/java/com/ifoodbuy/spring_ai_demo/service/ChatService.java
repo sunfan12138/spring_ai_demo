@@ -3,13 +3,12 @@ package com.ifoodbuy.spring_ai_demo.service;
 import com.ifoodbuy.spring_ai_demo.dto.ChatRequest;
 import com.ifoodbuy.spring_ai_demo.dto.ChatResponse;
 import com.ifoodbuy.spring_ai_demo.repository.ConversationMetadataRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-
-import java.time.LocalDateTime;
 
 /**
  * 聊天服务类
@@ -21,20 +20,12 @@ import java.time.LocalDateTime;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class ChatService {
 
     private final ChatClient chatClient;
     private final ConversationMetadataRepository metadataRepository;
     private final RagService ragService; // 可选，如果 RAG 服务存在则使用
-
-    public ChatService(
-            ChatClient chatClient,
-            ConversationMetadataRepository metadataRepository,
-            org.springframework.beans.factory.ObjectProvider<RagService> ragServiceProvider) {
-        this.chatClient = chatClient;
-        this.metadataRepository = metadataRepository;
-        this.ragService = ragServiceProvider.getIfAvailable();
-    }
 
     /**
      * 处理聊天请求（非流式）

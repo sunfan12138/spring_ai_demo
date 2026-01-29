@@ -1,21 +1,19 @@
 package com.ifoodbuy.spring_ai_demo.controller;
 
-import com.ifoodbuy.spring_ai_demo.dto.ConversationDetail;
+import com.ifoodbuy.spring_ai_demo.dto.ConversationDetailResponse;
 import com.ifoodbuy.spring_ai_demo.dto.ConversationListResponse;
 import com.ifoodbuy.spring_ai_demo.dto.UpdateTitleRequest;
 import com.ifoodbuy.spring_ai_demo.service.ConversationHistoryService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/chat/conversations")
+@RequiredArgsConstructor
 public class ConversationHistoryController {
 
     private final ConversationHistoryService conversationHistoryService;
-
-    public ConversationHistoryController(ConversationHistoryService conversationHistoryService) {
-        this.conversationHistoryService = conversationHistoryService;
-    }
 
     @GetMapping
     public ResponseEntity<ConversationListResponse> listConversations(
@@ -26,7 +24,7 @@ public class ConversationHistoryController {
     }
 
     @GetMapping("/{conversationId}")
-    public ResponseEntity<ConversationDetail> getConversation(@PathVariable String conversationId) {
+    public ResponseEntity<ConversationDetailResponse> getConversation(@PathVariable String conversationId) {
         return ResponseEntity.ok(conversationHistoryService.getConversation(conversationId));
     }
 

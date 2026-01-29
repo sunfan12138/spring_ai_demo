@@ -1,11 +1,10 @@
 package com.ifoodbuy.spring_ai_demo.service;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -20,16 +19,11 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@ConditionalOnBean(VectorStore.class)
+@RequiredArgsConstructor
 public class RagService {
 
     private final ChatClient chatClient;
     private final KnowledgeBaseService knowledgeBaseService;
-
-    public RagService(ChatClient chatClient, KnowledgeBaseService knowledgeBaseService) {
-        this.chatClient = chatClient;
-        this.knowledgeBaseService = knowledgeBaseService;
-    }
 
     /**
      * 使用 RAG 回答用户问题

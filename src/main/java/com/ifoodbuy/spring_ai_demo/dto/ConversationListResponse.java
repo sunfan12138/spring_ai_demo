@@ -10,7 +10,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ConversationListResponse {
-    private List<ConversationSummary> conversations;
+    private List<ConversationSummaryResponse> conversations;
     private long total;
     private int page;
     private int pageSize;
