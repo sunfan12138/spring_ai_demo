@@ -64,8 +64,18 @@ public class KnowledgeBaseService {
         if (spaceId == null || knowledgeSpaceRepository.findById(spaceId).isEmpty()) {
             throw new IllegalArgumentException("知识空间不存在，请先创建或选择已有空间");
         }
-        String documentName = file.getOriginalFilename();
-        if (documentName == null || documentName.isBlank()) {
+        // 文档名称：优先使用 metadata 中的 documentName，否则使用文件名（不含后缀）
+        String customName = metadata != null && metadata.get("documentName") != null 
+                ? metadata.get("documentName").toString().trim() : null;
+        String originalFilename = file.getOriginalFilename();
+        String documentName;
+        if (customName != null && !customName.isBlank()) {
+            documentName = customName;
+        } else if (originalFilename != null && !originalFilename.isBlank()) {
+            // 去掉后缀名
+            int lastDot = originalFilename.lastIndexOf('.');
+            documentName = lastDot > 0 ? originalFilename.substring(0, lastDot) : originalFilename;
+        } else {
             throw new IllegalArgumentException("文档名称不能为空");
         }
         if (knowledgeDocumentRepository.existsBySpaceIdAndDocumentName(spaceId, documentName)) {
@@ -178,17 +188,20 @@ public class KnowledgeBaseService {
      *
      * @param query 查询文本
      * @param topK 返回前 K 个结果
+     * @param similarityThreshold 相似度阈值（0.0-1.0），默认 0.7
      * @return 相关文档列表
      */
-    public List<Document> search(String query, int topK) {
-        log.info("搜索知识库，查询: {}, topK: {}", query, topK);
+    public List<Document> search(String query, int topK, Double similarityThreshold) {
+        double threshold = similarityThreshold != null && similarityThreshold >= 0.0 && similarityThreshold <= 1.0 
+                ? similarityThreshold : 0.7;
+        log.info("搜索知识库，查询: {}, topK: {}, 相似度阈值: {}", query, topK, threshold);
 
         // 使用 MilvusSearchRequest 以支持 Milvus 特定参数
         // 对于 IVF_FLAT 索引，设置 nprobe 参数以提高搜索准确性
         MilvusSearchRequest searchRequest = MilvusSearchRequest.milvusBuilder()
                 .query(query)
                 .topK(topK)
-                .similarityThreshold(0.7) // 相似度阈值
+                .similarityThreshold(threshold)
                 .searchParamsJson("{\"nprobe\":128}") // 对于 IVF_FLAT 索引很重要
                 .build();
 

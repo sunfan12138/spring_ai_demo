@@ -57,10 +57,14 @@ public class KnowledgeBaseController {
     @PostMapping("/upload")
     public ResponseEntity<Map<String, Object>> uploadDocument(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "spaceId", required = false) Long spaceId) {
+            @RequestParam(value = "spaceId", required = false) Long spaceId,
+            @RequestParam(value = "documentName", required = false) String documentName) {
         try {
             Map<String, Object> metadata = new HashMap<>();
             if (spaceId != null) metadata.put("spaceId", spaceId);
+            if (documentName != null && !documentName.isBlank()) {
+                metadata.put("documentName", documentName.trim());
+            }
 
             int documentCount = knowledgeBaseService.uploadDocument(file, metadata);
 
@@ -142,9 +146,10 @@ public class KnowledgeBaseController {
     @GetMapping("/search")
     public ResponseEntity<?> search(
             @RequestParam("query") String query,
-            @RequestParam(value = "topK", defaultValue = "5") int topK) {
+            @RequestParam(value = "topK", defaultValue = "5") int topK,
+            @RequestParam(value = "similarityThreshold", required = false) Double similarityThreshold) {
         try {
-            List<Document> documents = knowledgeBaseService.search(query, topK);
+            List<Document> documents = knowledgeBaseService.search(query, topK, similarityThreshold);
 
             List<SearchResponse> responses = documents.stream()
                     .map(doc -> {
