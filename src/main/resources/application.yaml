@@ -13,12 +13,12 @@ spring:
     # OpenAI 配置（兼容智谱 AI）
     openai:
       # API 密钥配置：从环境变量读取，如果未设置则使用默认值（请替换为你的实际 API 密钥）
-      api-key: ${MODELSCOPE_API_KEY}
+      api-key: ${BAILIAN_API_KEY}
       chat:
         options:
-          model: deepseek-ai/DeepSeek-V3.2
+          model: qwen3-max
         completions-path: /v1/chat/completions
-      base-url: https://api-inference.modelscope.cn/
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/
 
     # 重试配置（处理 429 限流错误）
     retry:
@@ -57,9 +57,9 @@ spring:
           enabled: true
         sse:
           connections:
-            open-webSearch:
+            bing-cn-mcp-server:
               url: https://mcp.api-inference.modelscope.net
-              sse-endpoint: /1b30a3a7c6f94b/sse
+              sse-endpoint: /55415b98a9b140/sse
     
     # Milvus 向量存储配置（知识库）
     # 启动 Milvus 后再上传文档，否则会提示「知识库服务不可用」

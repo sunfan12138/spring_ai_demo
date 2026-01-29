@@ -198,6 +198,10 @@
         }
 
         .history-item {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
             padding: 10px 12px;
             border-radius: 8px;
             background: #f5f5f5;
@@ -223,6 +227,11 @@
             background: #bbdefb;
         }
 
+        .history-item-content {
+            flex: 1;
+            min-width: 0;
+        }
+
         .history-item-title {
             font-weight: 500;
             margin-bottom: 4px;
@@ -232,6 +241,23 @@
             font-size: 11px;
             color: #999;
             margin-top: 4px;
+        }
+
+        .history-item-delete {
+            flex-shrink: 0;
+            padding: 4px 8px;
+            font-size: 12px;
+            color: #999;
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s;
+        }
+
+        .history-item-delete:hover {
+            color: #d32f2f;
+            background: rgba(211, 47, 47, 0.08);
         }
 
         .history-empty {
@@ -918,6 +944,37 @@
             loadHistoryFromBackend();
         }
 
+        async function deleteConversationFromBackend(conversationId) {
+            if (!conversationId) return;
+            if (!confirm('确定要删除这条历史对话吗？删除后无法恢复。')) return;
+            try {
+                const response = await fetch('/api/chat/conversations/' + encodeURIComponent(conversationId), {
+                    method: 'DELETE'
+                });
+                if (!response.ok) {
+                    alert('删除失败，请稍后重试。');
+                    return;
+                }
+                if (conversations.has(conversationId)) {
+                    conversations.delete(conversationId);
+                    if (activeConversationId === conversationId) {
+                        const next = conversations.keys().next().value;
+                        if (next) {
+                            setActiveConversation(next);
+                        } else {
+                            createNewConversation();
+                        }
+                    } else {
+                        renderTabs();
+                    }
+                }
+                loadHistoryFromBackend();
+            } catch (err) {
+                console.warn('删除历史对话失败:', err);
+                alert('删除失败，请稍后重试。');
+            }
+        }
+
         async function reopenConversation(id) {
             const summary = historyConversations.find(item => item.id === id);
             if (!summary) {
@@ -988,6 +1045,9 @@
                 const isOpened = conversations.has(conversation.id);
                 item.className = 'history-item' + (isOpened ? ' opened' : '');
                 
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'history-item-content';
+                
                 const titleDiv = document.createElement('div');
                 titleDiv.className = 'history-item-title';
                 let titleText = conversation.title || '历史对话';
@@ -995,13 +1055,26 @@
                     titleText += ' (已打开)';
                 }
                 titleDiv.textContent = titleText;
-                item.appendChild(titleDiv);
+                contentDiv.appendChild(titleDiv);
                 
                 const timeDiv = document.createElement('div');
                 timeDiv.className = 'history-item-time';
                 const timeText = formatHistoryTime(conversation.createdAt, conversation.updatedAt);
                 timeDiv.textContent = timeText;
-                item.appendChild(timeDiv);
+                contentDiv.appendChild(timeDiv);
+                
+                item.appendChild(contentDiv);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'history-item-delete';
+                deleteBtn.type = 'button';
+                deleteBtn.title = '删除此对话';
+                deleteBtn.textContent = '删除';
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteConversationFromBackend(conversation.id);
+                });
+                item.appendChild(deleteBtn);
                 
                 item.addEventListener('click', () => reopenConversation(conversation.id));
                 historyList.appendChild(item);
