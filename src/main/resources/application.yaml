@@ -10,15 +10,12 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   
   ai:
-    # OpenAI 配置（兼容智谱 AI）
-    openai:
-      # API 密钥配置：从环境变量读取，如果未设置则使用默认值（请替换为你的实际 API 密钥）
+    # 阿里千问 DashScope 配置（Spring AI Alibaba）
+    dashscope:
       api-key: ${BAILIAN_API_KEY}
       chat:
         options:
-          model: qwen3-max
-        completions-path: /v1/chat/completions
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/
+          model: qwen-max  # 可选: qwen-turbo, qwen-plus, qwen-max, qwen-max-longcontext 等
 
     # 重试配置（处理 429 限流错误）
     retry:
