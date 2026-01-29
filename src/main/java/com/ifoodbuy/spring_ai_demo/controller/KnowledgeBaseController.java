@@ -1,6 +1,7 @@
 package com.ifoodbuy.spring_ai_demo.controller;
 
 import com.ifoodbuy.spring_ai_demo.dto.KnowledgeListResponse;
+import com.ifoodbuy.spring_ai_demo.dto.SearchKnowledgeResponse;
 import com.ifoodbuy.spring_ai_demo.dto.SearchResponse;
 import com.ifoodbuy.spring_ai_demo.dto.UploadDocumentRequest;
 import com.ifoodbuy.spring_ai_demo.entity.KnowledgeDocument;
@@ -8,6 +9,7 @@ import com.ifoodbuy.spring_ai_demo.entity.KnowledgeSpace;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeDocumentRepository;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeSpaceRepository;
 import com.ifoodbuy.spring_ai_demo.service.KnowledgeBaseService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.http.HttpHeaders;
@@ -30,26 +32,12 @@ import java.util.Optional;
 @Slf4j
 @RestController
 @RequestMapping("/api/knowledge")
+@RequiredArgsConstructor
 public class KnowledgeBaseController {
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeSpaceRepository knowledgeSpaceRepository;
-
-    public KnowledgeBaseController(KnowledgeBaseService knowledgeBaseService,
-                                  KnowledgeDocumentRepository knowledgeDocumentRepository,
-                                  KnowledgeSpaceRepository knowledgeSpaceRepository) {
-        this.knowledgeBaseService = knowledgeBaseService;
-        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
-        this.knowledgeSpaceRepository = knowledgeSpaceRepository;
-    }
-
-    private ResponseEntity<Map<String, Object>> serviceUnavailable() {
-        Map<String, Object> body = new HashMap<>();
-        body.put("success", false);
-        body.put("message", "知识库服务不可用，请确保 Milvus 已启动且 application.yaml 中 spring.ai.vectorstore.milvus 配置正确");
-        return ResponseEntity.status(503).body(body);
-    }
 
     /**
      * 上传文档文件
@@ -58,35 +46,23 @@ public class KnowledgeBaseController {
     public ResponseEntity<Map<String, Object>> uploadDocument(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "spaceId", required = false) Long spaceId,
-            @RequestParam(value = "documentName", required = false) String documentName) {
-        try {
-            Map<String, Object> metadata = new HashMap<>();
-            if (spaceId != null) metadata.put("spaceId", spaceId);
-            if (documentName != null && !documentName.isBlank()) {
-                metadata.put("documentName", documentName.trim());
-            }
+            @RequestParam(value = "documentName", required = false) String documentName) throws IOException {
 
-            int documentCount = knowledgeBaseService.uploadDocument(file, metadata);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "文档上传成功");
-            response.put("documentCount", documentCount);
-            response.put("filename", file.getOriginalFilename());
-
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
-        } catch (IOException e) {
-            log.error("文档上传失败", e);
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", false);
-            response.put("message", "文档上传失败: " + e.getMessage());
-            return ResponseEntity.status(500).body(response);
+        Map<String, Object> metadata = new HashMap<>();
+        if (spaceId != null) metadata.put("spaceId", spaceId);
+        if (documentName != null && !documentName.isBlank()) {
+            metadata.put("documentName", documentName.trim());
         }
+
+        int documentCount = knowledgeBaseService.uploadDocument(file, metadata);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "文档上传成功");
+        response.put("documentCount", documentCount);
+        response.put("filename", file.getOriginalFilename());
+
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -149,17 +125,22 @@ public class KnowledgeBaseController {
             @RequestParam(value = "topK", defaultValue = "5") int topK,
             @RequestParam(value = "similarityThreshold", required = false) Double similarityThreshold) {
         try {
-            List<Document> documents = knowledgeBaseService.search(query, topK, similarityThreshold);
+            var searchResult = knowledgeBaseService.searchWithRewrite(query, topK, similarityThreshold);
+            List<Document> documents = searchResult.documents();
 
             List<SearchResponse> responses = documents.stream()
                     .map(doc -> {
                         // 从文档中提取相似度（如果有）
+                        // Milvus COSINE 距离：距离越小越相似，范围通常 0-2（归一化后约 0-1）
+                        // 相似度 = 1 - 距离（对于归一化的 COSINE 距离）
                         Double similarity = null;
                         if (doc.getMetadata().containsKey("distance")) {
                             Object distance = doc.getMetadata().get("distance");
                             if (distance instanceof Number) {
-                                // 将距离转换为相似度（假设是余弦距离，相似度 = 1 - 距离）
-                                similarity = 1.0 - ((Number) distance).doubleValue();
+                                double dist = ((Number) distance).doubleValue();
+                                // COSINE 距离转相似度：相似度 = 1 - 距离
+                                // 如果距离 > 1，可能是未归一化，使用 max(0, 1 - dist) 确保非负
+                                similarity = Math.max(0.0, 1.0 - dist);
                             }
                         }
 
@@ -171,7 +152,13 @@ public class KnowledgeBaseController {
                     })
                     .collect(Collectors.toList());
 
-            return ResponseEntity.ok(responses);
+            SearchKnowledgeResponse response = new SearchKnowledgeResponse(
+                    searchResult.originalQuery(),
+                    searchResult.rewrittenQuery(),
+                    responses
+            );
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("搜索失败", e);
             return ResponseEntity.status(500).build();
@@ -324,6 +311,7 @@ public class KnowledgeBaseController {
 
     /**
      * 获取文档原始文件（二进制）
+     *
      * @param disposition inline=浏览器内打开，attachment=下载（默认）
      */
     @GetMapping("/documents/{id}/raw")
@@ -353,22 +341,24 @@ public class KnowledgeBaseController {
 
     private static MediaType extensionToMediaType(String ext) {
         if (ext == null || ext.isEmpty()) return MediaType.APPLICATION_OCTET_STREAM;
-        switch (ext) {
-            case "pdf": return MediaType.APPLICATION_PDF;
-            case "txt": return MediaType.TEXT_PLAIN;
-            case "html": case "htm": return MediaType.TEXT_HTML;
-            case "json": return MediaType.APPLICATION_JSON;
-            case "xml": return MediaType.APPLICATION_XML;
-            case "jpg": case "jpeg": return MediaType.IMAGE_JPEG;
-            case "png": return MediaType.IMAGE_PNG;
-            case "gif": return MediaType.IMAGE_GIF;
-            case "webp": return MediaType.parseMediaType("image/webp");
-            case "doc": return MediaType.parseMediaType("application/msword");
-            case "docx": return MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-            case "xls": return MediaType.parseMediaType("application/vnd.ms-excel");
-            case "xlsx": return MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            default: return MediaType.APPLICATION_OCTET_STREAM;
-        }
+        return switch (ext) {
+            case "pdf" -> MediaType.APPLICATION_PDF;
+            case "txt" -> MediaType.TEXT_PLAIN;
+            case "html", "htm" -> MediaType.TEXT_HTML;
+            case "json" -> MediaType.APPLICATION_JSON;
+            case "xml" -> MediaType.APPLICATION_XML;
+            case "jpg", "jpeg" -> MediaType.IMAGE_JPEG;
+            case "png" -> MediaType.IMAGE_PNG;
+            case "gif" -> MediaType.IMAGE_GIF;
+            case "webp" -> MediaType.parseMediaType("image/webp");
+            case "doc" -> MediaType.parseMediaType("application/msword");
+            case "docx" ->
+                    MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            case "xls" -> MediaType.parseMediaType("application/vnd.ms-excel");
+            case "xlsx" ->
+                    MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            default -> MediaType.APPLICATION_OCTET_STREAM;
+        };
     }
 
     /**
