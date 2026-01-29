@@ -5,308 +5,737 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>知识库管理</title>
     <style>
+        * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
             background: #f0f2f5;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        .card {
+        .nav-bar {
+            padding: 12px 20px;
             background: white;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-bottom: 1px solid #e8e8e8;
         }
-        .full-width {
-            grid-column: 1 / -1;
+        .nav-link { color: #667eea; text-decoration: none; font-weight: 500; }
+        .nav-link:hover { text-decoration: underline; }
+        .main-layout { flex: 1; display: flex; min-height: 0; }
+        /* 左侧两列：知识空间 + 知识库列表 */
+        .left-panel {
+            display: flex;
+            width: 420px;
+            min-width: 380px;
+            background: white;
+            border-right: 1px solid #e8e8e8;
+            overflow: hidden;
         }
-        h2 {
-            margin-top: 0;
-            color: #1a1a1a;
-            border-bottom: 2px solid #f0f0f0;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
+        .space-col {
+            width: 160px;
+            min-width: 140px;
+            border-right: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        .form-group {
-            margin-bottom: 15px;
+        .space-col-header { padding: 12px 10px; border-bottom: 1px solid #eee; }
+        .space-col-title { font-size: 14px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; }
+        .space-list { flex: 1; overflow-y: auto; padding: 6px; }
+        .space-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            background: #f8f9fa;
+            border: 1px solid #eee;
+            cursor: pointer;
         }
-        label {
+        .space-row:hover { background: #eef0f5; }
+        .space-row.active { background: #e8eaf0; border-color: #667eea; }
+        .space-name { flex: 1; font-weight: 500; font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .space-edit { padding: 2px 6px; font-size: 11px; background: transparent; border: none; color: #666; cursor: pointer; border-radius: 4px; }
+        .space-edit:hover { background: #e0e0e0; color: #333; }
+        .doc-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .doc-col-header { padding: 12px 10px; border-bottom: 1px solid #eee; }
+        .doc-col-title { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+        .doc-list-area { flex: 1; overflow-y: auto; padding: 8px; }
+        .doc-item {
             display: block;
-            margin-bottom: 5px;
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 4px;
+            text-align: left;
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .doc-item:hover { background: #f0f2f5; }
+        .doc-item.active {
+            background: #e8eaf0;
+            border-color: #667eea;
+            box-shadow: 0 0 0 1px #667eea;
+        }
+        .doc-item .doc-name { font-weight: 500; margin-bottom: 2px; }
+        .doc-item .doc-meta { font-size: 11px; color: #666; }
+        .doc-pagination {
+            padding: 8px 10px;
+            border-top: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .doc-pagination .pagination-info { font-size: 11px; color: #666; }
+        .doc-pagination button { padding: 4px 10px; font-size: 11px; }
+        .empty-hint { padding: 16px; color: #999; font-size: 13px; }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
             font-weight: 500;
         }
-        input[type="text"], input[type="file"], input[type="number"], textarea {
+        .btn:hover { opacity: 0.9; }
+        .btn-secondary { background: #f0f2f5; color: #333; }
+        .btn-small { padding: 6px 10px; font-size: 12px; }
+        .detail-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #fafafa;
+        }
+        .detail-header { padding: 16px 20px; background: white; border-bottom: 1px solid #e8e8e8; }
+        .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .detail-title { font-size: 15px; font-weight: 600; color: #1a1a1a; flex: 1; min-width: 0; }
+        .detail-raw-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .detail-placeholder {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 14px;
+        }
+        .detail-content { flex: 1; overflow-y: auto; padding: 20px; }
+        .chunk-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #eee;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .search-section {
+            padding: 16px 20px;
+            background: white;
+            border-top: 1px solid #e8e8e8;
+        }
+        .search-section h3 { margin: 0 0 10px 0; font-size: 14px; color: #333; }
+        .search-row { display: flex; gap: 10px; align-items: center; }
+        .search-row input[type="text"] { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; }
+        .search-row input[type="number"] { width: 70px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        #searchResults { margin-top: 12px; max-height: 200px; overflow-y: auto; }
+        .result-item { border: 1px solid #eee; padding: 12px; margin-bottom: 8px; border-radius: 4px; background: #fafafa; }
+        .result-meta { font-size: 12px; color: #666; margin-bottom: 5px; }
+        .result-content { font-size: 13px; line-height: 1.5; white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 480px;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-header h2 { margin: 0; font-size: 16px; }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            line-height: 1;
+            padding: 0 4px;
+        }
+        .modal-close:hover { color: #333; }
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; }
+        .form-group input, .form-group textarea, .form-group select {
             width: 100%;
             padding: 8px 12px;
             border: 1px solid #ddd;
             border-radius: 4px;
             font-size: 14px;
-            box-sizing: border-box;
         }
-        textarea {
-            height: 100px;
-            resize: vertical;
-        }
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        button:hover {
-            opacity: 0.9;
-        }
-        .result-item {
-            border: 1px solid #eee;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            background: #fafafa;
-        }
-        .result-meta {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .result-content {
-            font-size: 14px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        .nav-link {
-            display: inline-block;
-            margin-bottom: 20px;
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 500;
-        }
+        .form-group textarea { height: 100px; resize: vertical; }
+        .form-group select { cursor: pointer; }
+        .modal-footer { padding: 12px 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 8px; }
+        .modal-status { margin-top: 10px; font-size: 13px; }
     </style>
 </head>
 <body>
-    <a href="/" class="nav-link">← 返回对话助手</a>
-    
-    <div class="container">
-        <!-- 上传文件 -->
-        <div class="card">
-            <h2>上传文档</h2>
-            <div class="form-group">
-                <label>选择文件</label>
-                <input type="file" id="docFile">
+    <header class="nav-bar">
+        <a href="/" class="nav-link">← 返回对话助手</a>
+    </header>
+
+    <div class="main-layout">
+        <div class="left-panel">
+            <div class="space-col">
+                <div class="space-col-header">
+                    <div class="space-col-title">知识空间</div>
+                    <button type="button" class="btn btn-small" onclick="openSpaceModal()">新建</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="loadSpaces()" style="margin-top:6px;">刷新</button>
+                </div>
+                <div id="spaceList" class="space-list"></div>
             </div>
-            <div class="form-group">
-                <label>分类 (Category)</label>
-                <input type="text" id="docCategory" placeholder="例如：技术文档">
+            <div class="doc-col">
+                <div class="doc-col-header">
+                    <div class="doc-col-title" id="docColTitle">知识库列表</div>
+                    <button type="button" class="btn btn-small" onclick="openUploadDocModal()" style="margin-top:6px;">上传文档</button>
+                    <button type="button" class="btn btn-small" onclick="openUploadTextModal()" style="margin-top:6px;">上传文本</button>
+                </div>
+                <div id="docListArea" class="doc-list-area">
+                    <p class="empty-hint" id="docListHint">请先选择左侧知识空间</p>
+                </div>
+                <div id="docPagination" class="doc-pagination" style="display:none;"></div>
             </div>
-            <button onclick="uploadDocument()">上传文档</button>
-            <div id="docUploadStatus" style="margin-top: 10px;"></div>
         </div>
 
-        <!-- 上传文本 -->
-        <div class="card">
-            <h2>上传文本</h2>
-            <div class="form-group">
-                <label>内容</label>
-                <textarea id="textContent" placeholder="请输入要存储的文本内容..."></textarea>
+        <main class="detail-area">
+            <div class="detail-header">
+                <div class="detail-title-row">
+                    <span id="detailTitle" class="detail-title">请选择左侧知识空间并点击文档查看详情</span>
+                    <span id="detailRawActions" class="detail-raw-actions" style="display:none;">
+                        <button type="button" class="btn btn-small btn-secondary" onclick="viewRawFile()">查看源文件</button>
+                        <button type="button" class="btn btn-small" onclick="downloadRawFile()">下载源文件</button>
+                    </span>
+                </div>
             </div>
-            <div class="form-group">
-                <label>元数据 (JSON格式)</label>
-                <input type="text" id="textMetadata" placeholder='{"source": "手动录入", "category": "FAQ"}'>
+            <div id="detailPlaceholder" class="detail-placeholder">选择左侧知识空间与文档后，可在此查看分块内容</div>
+            <div id="detailContent" class="detail-content" style="display: none;"></div>
+            <div class="search-section">
+                <h3>知识库检索</h3>
+                <div class="search-row">
+                    <input type="text" id="searchQuery" placeholder="输入关键词搜索...">
+                    <input type="number" id="topK" value="5" min="1" max="20" title="返回数量">
+                    <button type="button" class="btn" onclick="searchKnowledge()">搜索</button>
+                </div>
+                <div id="searchResults"></div>
             </div>
-            <button onclick="uploadText()">上传文本</button>
-            <div id="textUploadStatus" style="margin-top: 10px;"></div>
-        </div>
+        </main>
+    </div>
 
-        <!-- 搜索与管理 -->
-        <div class="card full-width">
-            <h2>知识库检索与管理</h2>
-            <div class="form-group" style="display: flex; gap: 10px;">
-                <input type="text" id="searchQuery" placeholder="输入关键词搜索..." style="flex: 1;">
-                <input type="number" id="topK" value="5" style="width: 80px;" title="返回数量">
-                <button onclick="searchKnowledge()">搜索</button>
+    <!-- 上传文档弹窗 -->
+    <div id="uploadDocModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>上传文档</h2>
+                <button type="button" class="modal-close" onclick="closeUploadDocModal()">&times;</button>
             </div>
-            <div id="searchResults"></div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>选择知识空间 <span style="color:red;">*</span></label>
+                    <select id="docSpaceSelect">
+                        <option value="">请选择知识空间</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>选择文件</label>
+                    <input type="file" id="docFile">
+                </div>
+                <div id="docUploadStatus" class="modal-status"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeUploadDocModal()">取消</button>
+                <button type="button" class="btn" onclick="uploadDocument()">上传</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传文本弹窗 -->
+    <div id="uploadTextModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>上传文本</h2>
+                <button type="button" class="modal-close" onclick="closeUploadTextModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>选择知识空间 <span style="color:red;">*</span></label>
+                    <select id="textSpaceSelect">
+                        <option value="">请选择知识空间</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>文档名称（可选，不填则自动生成）</label>
+                    <input type="text" id="textDocName" placeholder="用于在该空间内唯一标识此文本">
+                </div>
+                <div class="form-group">
+                    <label>内容</label>
+                    <textarea id="textContent" placeholder="请输入要存储的文本内容..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>其他元数据 (JSON，可选)</label>
+                    <input type="text" id="textMetadata" placeholder='{"key": "value"}'>
+                </div>
+                <div id="textUploadStatus" class="modal-status"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeUploadTextModal()">取消</button>
+                <button type="button" class="btn" onclick="uploadText()">上传</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建/编辑知识空间弹窗 -->
+    <div id="spaceModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="spaceModalTitle">新建知识空间</h2>
+                <button type="button" class="modal-close" onclick="closeSpaceModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>空间名称 <span style="color:red;">*</span>（全局唯一）</label>
+                    <input type="text" id="spaceNameInput" placeholder="输入空间名称">
+                </div>
+                <div id="spaceModalStatus" class="modal-status"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeSpaceModal()">取消</button>
+                <button type="button" class="btn" id="spaceModalSubmit" onclick="submitSpace()">确定</button>
+            </div>
         </div>
     </div>
 
     <script>
-        async function uploadDocument() {
-            const fileInput = document.getElementById('docFile');
-            const categoryInput = document.getElementById('docCategory');
-            const statusDiv = document.getElementById('docUploadStatus');
+        const PAGE_SIZE = 20;
+        let spaces = [];
+        let selectedSpaceId = null;
+        let selectedSpaceName = '';
+        let docPage = 0;
+        let docTotal = 0;
+        let selectedDoc = null;
+        let editingSpaceId = null;
 
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSpaces();
+        });
+
+        async function loadSpaces() {
+            try {
+                var response = await fetch('/api/knowledge/spaces');
+                spaces = await response.json();
+                if (!Array.isArray(spaces)) spaces = [];
+                renderSpaceList();
+                fillSpaceSelects();
+                if (selectedSpaceId != null) {
+                    selectedSpaceName = (spaces.find(function(s) { return s.id === selectedSpaceId; }) || {}).name || selectedSpaceName;
+                    document.getElementById('docColTitle').textContent = selectedSpaceName ? '知识库：' + selectedSpaceName : '知识库列表';
+                    loadDocsInSpace(selectedSpaceId, docPage);
+                } else {
+                    document.getElementById('docListArea').innerHTML = '<p class="empty-hint" id="docListHint">请先选择左侧知识空间</p>';
+                    document.getElementById('docPagination').style.display = 'none';
+                }
+            } catch (e) {
+                document.getElementById('spaceList').innerHTML = '<p class="empty-hint">加载失败: ' + escapeHtml(e.message) + '</p>';
+            }
+        }
+
+        function fillSpaceSelects() {
+            var opts = spaces.map(function(s) {
+                return '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>';
+            }).join('');
+            document.getElementById('docSpaceSelect').innerHTML = '<option value="">请选择知识空间</option>' + opts;
+            document.getElementById('textSpaceSelect').innerHTML = '<option value="">请选择知识空间</option>' + opts;
+        }
+
+        function renderSpaceList() {
+            var div = document.getElementById('spaceList');
+            if (spaces.length === 0) {
+                div.innerHTML = '<p class="empty-hint">暂无空间，点击「新建」</p>';
+                return;
+            }
+            div.innerHTML = spaces.map(function(space) {
+                var isActive = selectedSpaceId === space.id;
+                var safeName = String(space.name).replace(/'/g, "\\'").replace(/\\/g, '\\\\');
+                return '<div class="space-row' + (isActive ? ' active' : '') + '" data-space-id="' + space.id + '" data-space-name="' + escapeAttr(space.name) + '">' +
+                    '<span class="space-name">' + escapeHtml(space.name) + '</span>' +
+                    '<button type="button" class="space-edit" onclick="event.stopPropagation(); openSpaceModal(' + space.id + ', \'' + safeName + '\')">编辑</button>' +
+                    '</div>';
+            }).join('');
+            div.querySelectorAll('.space-row').forEach(function(row) {
+                row.addEventListener('click', function() {
+                    selectSpace(Number(this.dataset.spaceId), this.dataset.spaceName || '');
+                });
+            });
+        }
+
+        function selectSpace(spaceId, spaceName) {
+            selectedSpaceId = spaceId;
+            selectedSpaceName = spaceName || (spaces.find(function(s) { return s.id === spaceId; }) || {}).name || '';
+            docPage = 0;
+            document.querySelectorAll('.space-row').forEach(function(el) {
+                el.classList.toggle('active', Number(el.dataset.spaceId) === spaceId);
+            });
+            document.getElementById('docColTitle').textContent = selectedSpaceName ? '知识库：' + selectedSpaceName : '知识库列表';
+            loadDocsInSpace(spaceId, 0);
+        }
+
+        async function loadDocsInSpace(spaceId, page) {
+            document.getElementById('docListHint') && (document.getElementById('docListHint').style.display = 'none');
+            document.getElementById('docListArea').innerHTML = '<p class="empty-hint">加载中...</p>';
+            document.getElementById('docPagination').style.display = 'none';
+            try {
+                var response = await fetch('/api/knowledge/list/by-space?spaceId=' + spaceId + '&page=' + page + '&size=' + PAGE_SIZE);
+                var data = await response.json();
+                var items = data.items || [];
+                docTotal = data.total != null ? Number(data.total) : 0;
+                var totalPages = Math.ceil(docTotal / PAGE_SIZE) || 1;
+                if (items.length === 0) {
+                    document.getElementById('docListArea').innerHTML = '<p class="empty-hint">该空间下暂无文档</p>';
+                } else {
+                    document.getElementById('docListArea').innerHTML = items.map(function(doc) {
+                        var isActive = selectedDoc && selectedDoc.id === doc.id;
+                        return '<button type="button" class="doc-item' + (isActive ? ' active' : '') + '" data-doc-id="' + (doc.id || '') + '" data-space-id="' + spaceId + '" data-space-name="' + escapeAttr(doc.spaceName || selectedSpaceName) + '" data-name="' + escapeAttr(doc.documentName) + '">' +
+                            '<div class="doc-name">' + escapeHtml(doc.documentName) + '</div>' +
+                            '<div class="doc-meta">' + (doc.chunkCount || 0) + ' 个块' + (doc.fileSize != null ? ' · ' + formatFileSize(doc.fileSize) : '') + ' · ' + formatDate(doc.createdAt) + '</div>' +
+                            '</button>';
+                    }).join('');
+                    document.getElementById('docListArea').querySelectorAll('.doc-item').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            selectDocument(Number(this.dataset.docId), Number(this.dataset.spaceId), this.dataset.spaceName || '', this.dataset.name || '');
+                        });
+                    });
+                }
+                if (docTotal > 0) {
+                    var totalPages = Math.ceil(docTotal / PAGE_SIZE) || 1;
+                    var pagEl = document.getElementById('docPagination');
+                    pagEl.style.display = 'flex';
+                    pagEl.innerHTML = '<span class="pagination-info">' + (page * PAGE_SIZE + 1) + '-' + Math.min((page + 1) * PAGE_SIZE, docTotal) + ' / 共 ' + docTotal + ' 条</span>' +
+                        '<div><button type="button" class="btn btn-secondary btn-small" onclick="goDocPage(' + (page - 1) + ')" ' + (page <= 0 ? 'disabled' : '') + '>上一页</button> ' +
+                        '<button type="button" class="btn btn-secondary btn-small" onclick="goDocPage(' + (page + 1) + ')" ' + (page >= totalPages - 1 ? 'disabled' : '') + '>下一页</button></div>';
+                }
+            } catch (e) {
+                document.getElementById('docListArea').innerHTML = '<p class="empty-hint" style="color:red;">加载失败: ' + escapeHtml(e.message) + '</p>';
+            }
+        }
+
+        function goDocPage(page) {
+            if (page < 0 || selectedSpaceId == null) return;
+            docPage = page;
+            loadDocsInSpace(selectedSpaceId, page);
+        }
+
+        function selectDocument(docId, spaceId, spaceName, documentName) {
+            selectedDoc = { id: docId, spaceId: spaceId, spaceName: spaceName, documentName: documentName };
+            document.querySelectorAll('.doc-item').forEach(function(el) {
+                el.classList.toggle('active', Number(el.dataset.docId) === docId);
+            });
+            document.getElementById('detailTitle').textContent = documentName + (spaceName ? '（' + spaceName + '）' : '');
+            var rawActions = document.getElementById('detailRawActions');
+            rawActions.style.display = (docId != null && docId > 0) ? 'flex' : 'none';
+            document.getElementById('detailPlaceholder').style.display = 'none';
+            var contentEl = document.getElementById('detailContent');
+            contentEl.style.display = 'block';
+            contentEl.innerHTML = '<p style="color:#666;">加载中...</p>';
+            loadChunks(spaceId, documentName);
+        }
+
+        function viewRawFile() {
+            if (!selectedDoc || !selectedDoc.id) return;
+            window.open('/api/knowledge/documents/' + selectedDoc.id + '/raw?disposition=inline', '_blank');
+        }
+
+        function downloadRawFile() {
+            if (!selectedDoc || !selectedDoc.id) return;
+            window.location.href = '/api/knowledge/documents/' + selectedDoc.id + '/raw?disposition=attachment';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes == null || bytes < 0) return '';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        async function loadChunks(spaceId, documentName) {
+            var contentEl = document.getElementById('detailContent');
+            try {
+                var response = await fetch('/api/knowledge/documents/chunks?spaceId=' + spaceId + '&filename=' + encodeURIComponent(documentName));
+                var chunks = await response.json();
+                if (chunks && chunks.length > 0) {
+                    contentEl.innerHTML = chunks.map(function(c) {
+                        return '<div class="chunk-item">' + escapeHtml(c.content || '') + '</div>';
+                    }).join('');
+                } else {
+                    contentEl.innerHTML = '<p style="color:#999;">暂无内容或服务不可用。</p>';
+                }
+            } catch (e) {
+                contentEl.innerHTML = '<p style="color:red;">加载失败: ' + escapeHtml(e.message) + '</p>';
+            }
+        }
+
+        function formatDate(str) {
+            if (!str) return '';
+            try {
+                var d = new Date(str);
+                return isNaN(d.getTime()) ? str : d.toLocaleString('zh-CN');
+            } catch (_) { return str; }
+        }
+
+        function escapeAttr(s) {
+            if (s == null) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function openUploadDocModal() {
+            document.getElementById('docFile').value = '';
+            document.getElementById('docSpaceSelect').value = spaces.length ? String(spaces[0].id) : '';
+            document.getElementById('docUploadStatus').textContent = '';
+            document.getElementById('uploadDocModal').classList.add('show');
+        }
+        function closeUploadDocModal() {
+            document.getElementById('uploadDocModal').classList.remove('show');
+        }
+        function openUploadTextModal() {
+            document.getElementById('textContent').value = '';
+            document.getElementById('textDocName').value = '';
+            document.getElementById('textMetadata').value = '';
+            document.getElementById('textSpaceSelect').value = spaces.length ? String(spaces[0].id) : '';
+            document.getElementById('textUploadStatus').textContent = '';
+            document.getElementById('uploadTextModal').classList.add('show');
+        }
+        function closeUploadTextModal() {
+            document.getElementById('uploadTextModal').classList.remove('show');
+        }
+
+        function openSpaceModal(id, name) {
+            editingSpaceId = id != null ? id : null;
+            document.getElementById('spaceModalTitle').textContent = editingSpaceId != null ? '修改知识空间' : '新建知识空间';
+            document.getElementById('spaceNameInput').value = name != null ? name : '';
+            document.getElementById('spaceModalStatus').textContent = '';
+            document.getElementById('spaceModal').classList.add('show');
+        }
+        function closeSpaceModal() {
+            document.getElementById('spaceModal').classList.remove('show');
+            editingSpaceId = null;
+        }
+        async function submitSpace() {
+            var nameInput = document.getElementById('spaceNameInput');
+            var name = nameInput.value.trim();
+            var statusDiv = document.getElementById('spaceModalStatus');
+            if (!name) {
+                statusDiv.innerHTML = '<span style="color:red;">请输入空间名称</span>';
+                return;
+            }
+            if (editingSpaceId != null) {
+                try {
+                    var res = await fetch('/api/knowledge/spaces/' + editingSpaceId, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: name })
+                    });
+                    var data = await res.json();
+                    if (res.ok && data.id != null) {
+                        loadSpaces();
+                        closeSpaceModal();
+                    } else {
+                        statusDiv.innerHTML = '<span style="color:red;">' + (data.message || '修改失败') + '</span>';
+                    }
+                } catch (e) {
+                    statusDiv.innerHTML = '<span style="color:red;">请求失败: ' + escapeHtml(e.message) + '</span>';
+                }
+            } else {
+                try {
+                    var res = await fetch('/api/knowledge/spaces', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: name })
+                    });
+                    var data = await res.json();
+                    if (res.ok && data.id != null) {
+                        loadSpaces();
+                        closeSpaceModal();
+                    } else {
+                        statusDiv.innerHTML = '<span style="color:red;">' + (data.message || '创建失败') + '</span>';
+                    }
+                } catch (e) {
+                    statusDiv.innerHTML = '<span style="color:red;">请求失败: ' + escapeHtml(e.message) + '</span>';
+                }
+            }
+        }
+
+        async function uploadDocument() {
+            var fileInput = document.getElementById('docFile');
+            var spaceSelect = document.getElementById('docSpaceSelect');
+            var statusDiv = document.getElementById('docUploadStatus');
+            var spaceId = spaceSelect.value ? spaceSelect.value.trim() : '';
+            if (!spaceId) {
+                statusDiv.innerHTML = '<span style="color: red;">请选择知识空间</span>';
+                return;
+            }
             if (!fileInput.files[0]) {
                 statusDiv.innerHTML = '<span style="color: red;">请选择文件</span>';
                 return;
             }
-
-            const formData = new FormData();
+            var formData = new FormData();
             formData.append('file', fileInput.files[0]);
-            if (categoryInput.value) {
-                formData.append('category', categoryInput.value);
-            }
-
-            statusDiv.innerHTML = '上传中...';
-
+            formData.append('spaceId', spaceId);
+            statusDiv.textContent = '上传中...';
             try {
-                const response = await fetch('/api/knowledge/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                
+                var response = await fetch('/api/knowledge/upload', { method: 'POST', body: formData });
+                var result = await response.json();
                 if (result.success) {
-                    statusDiv.innerHTML = `<span style="color: green;">${result.message} (块数: ${result.documentCount})</span>`;
-                    fileInput.value = ''; // 清空选择
+                    statusDiv.innerHTML = '<span style="color: green;">' + result.message + ' (块数: ' + result.documentCount + ')</span>';
+                    fileInput.value = '';
+                    if (selectedSpaceId === Number(spaceId)) {
+                        docPage = 0;
+                        loadDocsInSpace(selectedSpaceId, 0);
+                    }
+                    loadSpaces();
+                    setTimeout(closeUploadDocModal, 800);
                 } else {
-                    statusDiv.innerHTML = `<span style="color: red;">${result.message}</span>`;
+                    statusDiv.innerHTML = '<span style="color: red;">' + (result.message || '上传失败') + '</span>';
                 }
             } catch (error) {
-                statusDiv.innerHTML = `<span style="color: red;">请求失败: ${error.message}</span>`;
+                statusDiv.innerHTML = '<span style="color: red;">请求失败: ' + escapeHtml(error.message) + '</span>';
             }
         }
 
         async function uploadText() {
-            const textInput = document.getElementById('textContent');
-            const metadataInput = document.getElementById('textMetadata');
-            const statusDiv = document.getElementById('textUploadStatus');
-
+            var textInput = document.getElementById('textContent');
+            var spaceSelect = document.getElementById('textSpaceSelect');
+            var docNameInput = document.getElementById('textDocName');
+            var metadataInput = document.getElementById('textMetadata');
+            var statusDiv = document.getElementById('textUploadStatus');
+            var spaceId = spaceSelect.value ? spaceSelect.value.trim() : '';
+            if (!spaceId) {
+                statusDiv.innerHTML = '<span style="color: red;">请选择知识空间</span>';
+                return;
+            }
             if (!textInput.value.trim()) {
                 statusDiv.innerHTML = '<span style="color: red;">请输入内容</span>';
                 return;
             }
-
-            let metadata = {};
+            var metadata = { spaceId: Number(spaceId) };
+            if (docNameInput.value.trim()) metadata.source = docNameInput.value.trim();
             try {
                 if (metadataInput.value.trim()) {
-                    metadata = JSON.parse(metadataInput.value);
+                    var extra = JSON.parse(metadataInput.value);
+                    for (var k in extra) if (extra.hasOwnProperty(k) && k !== 'spaceId' && k !== 'source') metadata[k] = extra[k];
                 }
             } catch (e) {
-                statusDiv.innerHTML = '<span style="color: red;">元数据格式错误 (必须是JSON)</span>';
+                statusDiv.innerHTML = '<span style="color: red;">其他元数据格式错误 (必须是JSON)</span>';
                 return;
             }
-
-            statusDiv.innerHTML = '上传中...';
-
+            statusDiv.textContent = '上传中...';
             try {
-                const response = await fetch('/api/knowledge/upload-text', {
+                var response = await fetch('/api/knowledge/upload-text', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        text: textInput.value,
-                        metadata: metadata
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: textInput.value, metadata: metadata })
                 });
-                const result = await response.json();
-                
+                var result = await response.json();
                 if (result.success) {
-                    statusDiv.innerHTML = `<span style="color: green;">${result.message} (块数: ${result.documentCount})</span>`;
+                    statusDiv.innerHTML = '<span style="color: green;">' + result.message + ' (块数: ' + result.documentCount + ')</span>';
                     textInput.value = '';
+                    docNameInput.value = '';
+                    if (selectedSpaceId === Number(spaceId)) {
+                        docPage = 0;
+                        loadDocsInSpace(selectedSpaceId, 0);
+                    }
+                    loadSpaces();
+                    setTimeout(closeUploadTextModal, 800);
                 } else {
-                    statusDiv.innerHTML = `<span style="color: red;">${result.message}</span>`;
+                    statusDiv.innerHTML = '<span style="color: red;">' + (result.message || '上传失败') + '</span>';
                 }
             } catch (error) {
-                statusDiv.innerHTML = `<span style="color: red;">请求失败: ${error.message}</span>`;
+                statusDiv.innerHTML = '<span style="color: red;">请求失败: ' + escapeHtml(error.message) + '</span>';
             }
         }
 
         async function searchKnowledge() {
-            const queryInput = document.getElementById('searchQuery');
-            const topKInput = document.getElementById('topK');
-            const resultsDiv = document.getElementById('searchResults');
-
+            var queryInput = document.getElementById('searchQuery');
+            var topKInput = document.getElementById('topK');
+            var resultsDiv = document.getElementById('searchResults');
             if (!queryInput.value.trim()) {
                 alert('请输入搜索关键词');
                 return;
             }
-
             resultsDiv.innerHTML = '搜索中...';
-
             try {
-                const response = await fetch(`/api/knowledge/search?query=${encodeURIComponent(queryInput.value)}&topK=${topKInput.value}`);
-                const results = await response.json();
-
-                if (results.length === 0) {
-                    resultsDiv.innerHTML = '未找到相关内容';
+                var response = await fetch('/api/knowledge/search?query=' + encodeURIComponent(queryInput.value) + '&topK=' + topKInput.value);
+                var results = await response.json();
+                if (!results || results.length === 0) {
+                    resultsDiv.innerHTML = '<p style="color:#666;">未找到相关内容</p>';
                     return;
                 }
-
-                resultsDiv.innerHTML = results.map((item, index) => {
-                    const metadataStr = JSON.stringify(item.metadata);
-                    const similarity = item.similarity ? (item.similarity * 100).toFixed(2) + '%' : 'N/A';
-                    // 尝试从元数据中获取标识符用于删除，这里假设有 filename
-                    const filename = item.metadata.filename || '';
-                    
-                    return `
-                        <div class="result-item">
-                            <div class="result-meta">
-                                <span>相似度: ${similarity} | 来源: ${filename || '未知'}</span>
-                                ${filename ? `<button onclick='deleteByFilename("${filename}")' style="padding: 2px 8px; font-size: 12px; background: #e53e3e; color: white; border: none; border-radius: 3px; cursor: pointer;">删除文档</button>` : ''}
-                            </div>
-                            <div class="result-content">${escapeHtml(item.content)}</div>
-                            <div style="font-size: 11px; color: #999; margin-top: 5px;">Metadata: ${escapeHtml(metadataStr)}</div>
-                        </div>
-                    `;
+                resultsDiv.innerHTML = results.map(function(item) {
+                    var similarity = item.similarity != null ? (item.similarity * 100).toFixed(2) + '%' : 'N/A';
+                    var filename = (item.metadata && item.metadata.filename) || '未知';
+                    return '<div class="result-item">' +
+                        '<div class="result-meta">相似度: ' + similarity + ' | 来源: ' + escapeHtml(filename) + '</div>' +
+                        '<div class="result-content">' + escapeHtml(item.content) + '</div>' +
+                        '</div>';
                 }).join('');
             } catch (error) {
-                resultsDiv.innerHTML = `<span style="color: red;">搜索失败: ${error.message}</span>`;
-            }
-        }
-
-        async function deleteByFilename(filename) {
-            if (!confirm(`确定要删除文件 "${filename}" 的所有相关片段吗？`)) {
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/knowledge/delete', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        filename: filename
-                    })
-                });
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert(result.message);
-                    searchKnowledge(); // 刷新搜索结果
-                } else {
-                    alert(result.message);
-                }
-            } catch (error) {
-                alert('请求失败: ' + error.message);
+                resultsDiv.innerHTML = '<p style="color:red;">搜索失败: ' + escapeHtml(error.message) + '</p>';
             }
         }
 
         function escapeHtml(text) {
             if (!text) return '';
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
         }
     </script>
 </body>

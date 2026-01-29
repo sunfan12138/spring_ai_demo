@@ -1,9 +1,6 @@
 spring:
   application:
     name: spring_ai_demo
-  # 允许 Bean 覆盖（用于解决编译缓存导致的重复 Bean 问题）
-  main:
-    allow-bean-definition-overriding: true
   
   # 数据库配置
   datasource:
@@ -12,8 +9,8 @@ spring:
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
   
-  # OpenAI 配置（兼容智谱 AI）
   ai:
+    # OpenAI 配置（兼容智谱 AI）
     openai:
       # API 密钥配置：从环境变量读取，如果未设置则使用默认值（请替换为你的实际 API 密钥）
       api-key: ${BAILIAN_API_KEY}
@@ -66,40 +63,27 @@ spring:
               sse-endpoint: /1b30a3a7c6f94b/sse
     
     # Milvus 向量存储配置（知识库）
-    # Spring Boot 自动配置，无需手动创建 Bean
-    # 参考: https://docs.springjava.cn/spring-ai/reference/api/vectordbs/milvus.html
+    # 启动 Milvus 后再上传文档，否则会提示「知识库服务不可用」
+    # 本地启动: docker compose -f docker-compose-milvus.yml up -d
+    # 或下载官方: wget https://github.com/milvus-io/milvus/releases/download/v2.6.4/milvus-standalone-docker-compose.yml -O docker-compose-milvus.yml
     vectorstore:
       milvus:
-        # 客户端配置
         client:
           host: localhost
           port: 19530
           username: root
-          password: Milvus
+          password: milvus   # 官方默认小写；若启用认证请与 Milvus 配置一致
         # 数据库和集合配置
         database-name: default
         collection-name: knowledge_base
         # Schema 配置
         initialize-schema: true  # 必须显式设置为 true 才会初始化 schema
-        embedding-dimension: 384  # ONNX 模型 (all-MiniLM-L6-v2) 默认为 384
+        embedding-dimension: 512  # BGE-small-zh-v1.5 为 512
         # 索引配置
         index-type: IVF_FLAT  # 可选: IVF_FLAT, HNSW, AUTOINDEX 等
         metric-type: COSINE  # 可选: COSINE, L2, IP
         # 索引参数（对于 IVF_FLAT，建议设置 nprobe）
         index-parameters: '{"nlist":1024}'
-    
-    # Embedding 模型配置（用于生成向量）
-    # 注意：spring-ai-starter-model-openai 已包含 embedding 功能
-    # 如果使用兼容 OpenAI 的 API，配置与 chat 模型相同
-    embedding:
-      openai:
-        enabled: false # 禁用 OpenAI Embedding
-        api-key: ${BAILIAN_API_KEY}
-        base-url: https://dashscope.aliyuncs.com/compatible-mode/
-        embedding-options:
-          model: text-embedding-v3  # 根据实际模型调整，确保维度匹配
-      transformer:
-        enabled: true
 
 # 服务器配置
 server:

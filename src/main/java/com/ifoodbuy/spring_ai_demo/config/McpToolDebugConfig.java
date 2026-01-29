@@ -42,14 +42,11 @@ public class McpToolDebugConfig {
         ToolDebugResult result = new ToolDebugResult();
         
         // 检查 ToolCallback Bean
-        int toolCallbackCount = debugToolCallbacks(result);
-        
+        debugToolCallbacks(result);
         // 检查 ToolCallbackProvider
-        int toolProviderCount = debugToolCallbackProviders(result);
-        
+        debugToolCallbackProviders(result);
         // 检查 MCP 客户端 Bean
-        debugMcpBeans();
-        
+//        debugMcpBeans();
         // 打印总结
         printSummary(result);
         
@@ -58,14 +55,13 @@ public class McpToolDebugConfig {
 
     /**
      * 检查 ToolCallback Bean
-     * 
+     *
      * @param result 调试结果对象
-     * @return 找到的 ToolCallback 数量
      */
-    private int debugToolCallbacks(ToolDebugResult result) {
+    private void debugToolCallbacks(ToolDebugResult result) {
         List<ToolCallback> toolCallbacks = toolCallbacksProvider.getIfAvailable();
         if (CollectionUtils.isEmpty(toolCallbacks)) {
-            return 0;
+            return;
         }
         
         result.foundTools = true;
@@ -75,20 +71,18 @@ public class McpToolDebugConfig {
         for (ToolCallback callback : toolCallbacks) {
             logToolDefinition(callback.getToolDefinition(), "  ✓ ToolCallback");
         }
-        
-        return toolCallbacks.size();
+
     }
 
     /**
      * 检查 ToolCallbackProvider
-     * 
+     *
      * @param result 调试结果对象
-     * @return 找到的 ToolCallbackProvider 数量
      */
-    private int debugToolCallbackProviders(ToolDebugResult result) {
+    private void debugToolCallbackProviders(ToolDebugResult result) {
         List<ToolCallbackProvider> providers = toolCallbackProviders.getIfAvailable();
         if (CollectionUtils.isEmpty(providers)) {
-            return 0;
+            return;
         }
         
         log.info("找到 {} 个 ToolCallbackProvider Bean", providers.size());
@@ -96,8 +90,6 @@ public class McpToolDebugConfig {
         for (ToolCallbackProvider provider : providers) {
             debugSingleProvider(provider, result);
         }
-        
-        return providers.size();
     }
 
     /**
