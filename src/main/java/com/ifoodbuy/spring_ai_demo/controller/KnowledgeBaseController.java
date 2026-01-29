@@ -43,66 +43,16 @@ public class KnowledgeBaseController {
      * 上传文档文件
      */
     @PostMapping("/upload")
-    public ResponseEntity<UploadResponse> uploadDocument(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "spaceId", required = false) Long spaceId,
-            @RequestParam(value = "documentName", required = false) String documentName) throws IOException {
-
-        Map<String, Object> metadata = new HashMap<>();
-        if (spaceId != null) metadata.put("spaceId", spaceId);
-        if (documentName != null && !documentName.isBlank()) {
-            metadata.put("documentName", documentName.trim());
-        }
-
-        int documentCount = knowledgeBaseService.uploadDocument(file, metadata);
-
+    public ResponseEntity<UploadResponse> uploadDocument(UploadDocumentRequest request) throws IOException {
+        int documentCount = knowledgeBaseService.uploadDocument(request);
         UploadResponse response = new UploadResponse(
                 true,
                 "文档上传成功",
                 documentCount,
-                file.getOriginalFilename()
+                request.getFile().getOriginalFilename()
         );
 
         return ResponseEntity.ok(response);
-    }
-
-    /**
-     * 上传文本内容
-     */
-    @PostMapping("/upload-text")
-    public ResponseEntity<UploadResponse> uploadText(@RequestBody UploadDocumentRequest request) {
-        try {
-            int documentCount = knowledgeBaseService.uploadText(
-                    request.getText(),
-                    request.getMetadata()
-            );
-
-            UploadResponse response = new UploadResponse(
-                    true,
-                    "文本上传成功",
-                    documentCount,
-                    null
-            );
-
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            UploadResponse response = new UploadResponse(
-                    false,
-                    e.getMessage(),
-                    null,
-                    null
-            );
-            return ResponseEntity.badRequest().body(response);
-        } catch (Exception e) {
-            log.error("文本上传失败", e);
-            UploadResponse response = new UploadResponse(
-                    false,
-                    "文本上传失败: " + e.getMessage(),
-                    null,
-                    null
-            );
-            return ResponseEntity.status(500).body(response);
-        }
     }
 
     /**

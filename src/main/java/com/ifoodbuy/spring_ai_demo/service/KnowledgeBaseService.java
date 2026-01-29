@@ -1,12 +1,8 @@
 package com.ifoodbuy.spring_ai_demo.service;
 
+import com.ifoodbuy.spring_ai_demo.dto.UploadDocumentRequest;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeDocumentRepository;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeSpaceRepository;
-import io.milvus.client.MilvusClient;
-import io.milvus.grpc.QueryResults;
-import io.milvus.param.R;
-import io.milvus.param.dml.QueryParam;
-import io.milvus.response.QueryResultsWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -22,11 +18,11 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.ai.vectorstore.filter.Filter;
 import org.springframework.ai.vectorstore.milvus.MilvusSearchRequest;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -44,7 +40,6 @@ public class KnowledgeBaseService {
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeSpaceRepository knowledgeSpaceRepository;
     private final ChatModel chatModel;
-    private final MilvusClient milvusClient;
 
     // 使用 TokenTextSplitter builder 创建
     // 对于 ONNX all-MiniLM-L6-v2 模型，最大 token 数为 512，因此设置 chunkSize 为 400 比较安全
@@ -58,48 +53,35 @@ public class KnowledgeBaseService {
     /**
      * 上传文档到知识库
      *
-     * @param file     文档文件
-     * @param metadata 文档元数据（可选）
+     * @param request
      * @return 上传的文档数量
      */
-    public int uploadDocument(MultipartFile file, Map<String, Object> metadata) throws IOException {
+    public int uploadDocument(UploadDocumentRequest request) throws IOException {
+        MultipartFile file = request.getFile();
         log.info("开始上传文档: {}, 大小: {} bytes", file.getOriginalFilename(), file.getSize());
 
-        Long spaceId = parseSpaceId(metadata);
-        if (spaceId == null || knowledgeSpaceRepository.findById(spaceId).isEmpty()) {
+        if (knowledgeSpaceRepository.findById(request.getSpaceId()).isEmpty()) {
             throw new IllegalArgumentException("知识空间不存在，请先创建或选择已有空间");
         }
-        // 文档名称：优先使用 metadata 中的 documentName，否则使用文件名（不含后缀）
-        String customName = metadata.get("documentName") != null
-                ? metadata.get("documentName").toString().trim() : null;
-        String originalFilename = file.getOriginalFilename();
-        String documentName;
-        if (customName != null && !customName.isBlank()) {
-            documentName = customName;
-        } else if (originalFilename != null && !originalFilename.isBlank()) {
-            // 去掉后缀名
-            int lastDot = originalFilename.lastIndexOf('.');
-            documentName = lastDot > 0 ? originalFilename.substring(0, lastDot) : originalFilename;
-        } else {
-            throw new IllegalArgumentException("文档名称不能为空");
-        }
-        if (knowledgeDocumentRepository.existsBySpaceIdAndDocumentName(spaceId, documentName)) {
+        if (knowledgeDocumentRepository.existsBySpaceIdAndDocumentName(request.getSpaceId(), request.getDocumentName())) {
             throw new IllegalArgumentException("该空间下已存在同名文档，请使用其他名称或删除后重试");
         }
 
         // 使用 Tika 读取文档内容
-        TikaDocumentReader reader = new TikaDocumentReader(file.getResource());
+        Resource resource = file.getResource();
+        TikaDocumentReader reader = new TikaDocumentReader(resource);
         List<Document> documents = reader.get();
 
         // 添加元数据（向量库用 space_id + filename 过滤）
-        Map<String, Object> docMetadata = new HashMap<>(metadata);
-        docMetadata.put("space_id", spaceId);
-        docMetadata.put("filename", documentName);
-        docMetadata.put("contentType", file.getContentType());
-        docMetadata.put("size", file.getSize());
+        Map<String, Object> docMetadata = new HashMap<>();
+        docMetadata.put("space_id", request.getSpaceId());
+        docMetadata.put("document_name", request.getDocumentName());
 
         // 先分割文档
         List<Document> processedDocuments = textSplitter.apply(documents);
+        // 可选：记录总分块数，方便校验完整性
+        docMetadata.put("total_chunks", processedDocuments.size());
+
         // 关键优化：为每个块注入唯一的顺序索引 (chunk_index)
         for (int i = 0; i < processedDocuments.size(); i++) {
             Document doc = processedDocuments.get(i);
@@ -107,8 +89,6 @@ public class KnowledgeBaseService {
             Map<String, Object> currentMetadata = new HashMap<>(docMetadata);
             // 注入块索引：从 0 开始
             currentMetadata.put("chunk_index", i);
-            // 可选：记录总分块数，方便校验完整性
-            currentMetadata.put("total_chunks", processedDocuments.size());
             doc.getMetadata().putAll(currentMetadata);
         }
 
@@ -117,11 +97,11 @@ public class KnowledgeBaseService {
 
         // 原始文件二进制、文件后缀名、大小
         byte[] rawData = file.getBytes();
-        String fileType = getFileExtension(documentName);
+        String fileType = getFileExtension(file.getOriginalFilename());
         long fileSize = file.getSize() >= 0 ? file.getSize() : rawData.length;
 
         // 记录到文档索引表（含原始数据）
-        knowledgeDocumentRepository.insert(spaceId, documentName, processedDocuments.size(), rawData, fileType, fileSize);
+        knowledgeDocumentRepository.insert(request.getSpaceId(), request.getDocumentName(), processedDocuments.size(), rawData, fileType, fileSize);
 
         log.info("文档上传完成，共 {} 个文档块", processedDocuments.size());
         return processedDocuments.size();
@@ -132,63 +112,6 @@ public class KnowledgeBaseService {
         int i = filename.lastIndexOf('.');
         if (i < 0 || i >= filename.length() - 1) return "";
         return filename.substring(i + 1).trim().toLowerCase();
-    }
-
-    private static Long parseSpaceId(Map<String, Object> metadata) {
-        if (metadata == null) return null;
-        Object v = metadata.get("spaceId");
-        if (v == null) v = metadata.get("category");
-        if (v instanceof Number) return ((Number) v).longValue();
-        if (v != null) {
-            try {
-                return Long.parseLong(v.toString().trim());
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 上传文本内容到知识库
-     *
-     * @param text     文本内容
-     * @param metadata 文档元数据（可选）
-     * @return 上传的文档数量
-     */
-    public int uploadText(String text, Map<String, Object> metadata) {
-        log.info("开始上传文本，长度: {}", text.length());
-
-        Long spaceId = parseSpaceId(metadata);
-        if (spaceId == null || knowledgeSpaceRepository.findById(spaceId).isEmpty()) {
-            throw new IllegalArgumentException("知识空间不存在，请先创建或选择已有空间");
-        }
-        String docName = metadata.get("source") != null ? metadata.get("source").toString().trim() : null;
-        if (docName == null || docName.isBlank()) {
-            docName = "文本-" + System.currentTimeMillis();
-        }
-        if (knowledgeDocumentRepository.existsBySpaceIdAndDocumentName(spaceId, docName)) {
-            throw new IllegalArgumentException("该空间下已存在同名文档，请使用其他名称或删除后重试");
-        }
-
-        Map<String, Object> docMetadata = new HashMap<>(metadata);
-        docMetadata.put("space_id", spaceId);
-        docMetadata.put("filename", docName);
-
-        Document document = new Document(text, docMetadata);
-        List<Document> documents = textSplitter.apply(List.of(document));
-
-        vectorStore.add(documents);
-
-        // 原始数据：文本 UTF-8 字节，后缀名 txt
-        byte[] rawData = text.getBytes(StandardCharsets.UTF_8);
-        String fileType = "txt";
-        long fileSize = rawData.length;
-
-        // 记录到文档索引表（含原始数据）
-        knowledgeDocumentRepository.insert(spaceId, docName, documents.size(), rawData, fileType, fileSize);
-
-        log.info("文本上传完成，共 {} 个文档块", documents.size());
-        return documents.size();
     }
 
     /**
@@ -234,7 +157,7 @@ public class KnowledgeBaseService {
      *
      * @param query               查询文本
      * @param topK                返回前 K 个结果
-     * @param similarityThreshold 相似度阈值（0.0-1.0），默认 0.3
+     * @param similarityThreshold 相似度阈值（0.0-1.0），默认 0.4
      * @return 搜索结果信息（包含重写后的查询和文档列表）
      */
     public SearchResult searchWithRewrite(String query, int topK, Double similarityThreshold) {
@@ -255,11 +178,11 @@ public class KnowledgeBaseService {
         // 3. 动态阈值逻辑优化
         // BGE-v1.5 的 COSINE 分数通常在 0.5-0.7 波动，0.3 是个合理的召回门槛
         double threshold = (similarityThreshold != null && similarityThreshold >= 0.0)
-                ? similarityThreshold : 0.35;
+                ? similarityThreshold : 0.4;
 
         // 针对超短文本或长重写文本微调阈值
         if (rewrittenQuery.length() < 10) {
-            threshold = 0.25;
+            threshold = 0.3;
             log.info("短文本查询，降低相似度阈值至 {}", threshold);
         }
 
@@ -272,7 +195,7 @@ public class KnowledgeBaseService {
         // 5. 构建针对 Milvus HNSW 优化的请求
         MilvusSearchRequest searchRequest = MilvusSearchRequest.milvusBuilder()
                 .query(finalQuery)
-                .topK(Math.max(topK * 3, 30)) // 扩大取样范围，增加容错
+                .topK(Math.max(topK, 10)) // 扩大取样范围，增加容错
                 .similarityThreshold(threshold)
                 .searchParamsJson("{\"ef\":" + ef + "}") // HNSW 专用参数
                 .build();
@@ -309,56 +232,26 @@ public class KnowledgeBaseService {
      * @return 文档块列表
      */
     public List<Document> searchChunksBySpaceIdAndFilename(Long spaceId, String filename) {
-        String expr = String.format("space_id == %d && filename == '%s'", spaceId, filename);
-        QueryParam queryParam = QueryParam.newBuilder()
-                .withCollectionName("knowledge_base")
-                .withExpr(expr)
-                .withOutFields(Arrays.asList("content", "metadata")) // 只查你需要的字段
+        // 1. 构建过滤表达式 (对应物理列 space_id 和 document_name)
+        FilterExpressionBuilder b = new FilterExpressionBuilder();
+        Filter.Expression filterExpression = b.and(
+                b.eq("space_id", spaceId),
+                b.eq("document_name", filename)
+        ).build();
+
+        // 2. 使用 MilvusSearchRequest
+        // 虽然是 similaritySearch，但由于阈值为 0 且只有过滤条件，它表现得像精确查询
+        MilvusSearchRequest request = MilvusSearchRequest.milvusBuilder()
+                .query("") // 向量搜索关键字为空
+                .topK(1000) // 假设一个文件不会超过 1000 个分块
+                .similarityThreshold(0.0) // 必须为 0，确保不过滤任何分块
+                .filterExpression(filterExpression)
                 .build();
 
-        R<QueryResults> response = milvusClient.query(queryParam);
-        // 随后将 QueryResults 转换为 Spring AI 的 Document 对象
-        return convertToSpringAIDocuments(response);
-    }
+        List<Document> results = vectorStore.similaritySearch(request);
 
-    /**
-     * 将 Milvus 原生 QueryResults 转换为 Spring AI Document
-     */
-    private List<Document> convertToSpringAIDocuments(R<QueryResults> response) {
-        if (response == null || response.getData() == null) {
-            return Collections.emptyList();
-        }
-
-        List<Document> documents = new ArrayList<>();
-
-        // 使用 QueryResultsWrapper 方便地按行处理数据
-        QueryResultsWrapper wrapper = new QueryResultsWrapper(response.getData());
-        List<QueryResultsWrapper.RowRecord> rows = wrapper.getRowRecords();
-
-        for (QueryResultsWrapper.RowRecord row : rows) {
-            // 1. 提取核心内容字段 (假设你在 Milvus 中定义的文本字段名为 "content")
-            String content = row.get("content").toString();
-
-            // 2. 提取元数据字段 (Metadata)
-            // Spring AI 的 Document 构造函数接受一个 Map<String, Object>
-            Map<String, Object> metadata = new HashMap<>();
-
-            // 遍历行中所有的字段，将非内容字段存入 metadata
-            row.getFieldValues().forEach((key, value) -> {
-                if (!"content".equals(key) && !"embedding".equals(key)) {
-                    metadata.put(key, value);
-                }
-            });
-
-            // 3. 提取 ID (如果有)
-            String id = row.get("id") != null ? row.get("id").toString() : UUID.randomUUID().toString();
-
-            // 4. 构建 Spring AI Document 对象
-            Document document = new Document(id, content, metadata);
-            documents.add(document);
-        }
-
-        return documents.stream()
+        // 3. 按照 chunk_index 进行物理排序，还原文档顺序
+        return results.stream()
                 .sorted(Comparator.comparingInt(doc -> {
                     Object idx = doc.getMetadata().get("chunk_index");
                     return idx instanceof Number ? ((Number) idx).intValue() : 0;

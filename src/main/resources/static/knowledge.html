@@ -232,7 +232,6 @@
                     <div class="doc-col-title" id="docColTitle">知识库列表</div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
                         <button type="button" class="btn btn-small" onclick="openUploadDocModal()">上传文档</button>
-                        <button type="button" class="btn btn-small" onclick="openUploadTextModal()">上传文本</button>
                         <button type="button" class="btn btn-secondary btn-small" onclick="openSearchModal()">知识库检索</button>
                     </div>
                 </div>
@@ -289,41 +288,6 @@
         </div>
     </div>
 
-    <!-- 上传文本弹窗 -->
-    <div id="uploadTextModal" class="modal-overlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>上传文本</h2>
-                <button type="button" class="modal-close" onclick="closeUploadTextModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>选择知识空间 <span style="color:red;">*</span></label>
-                    <select id="textSpaceSelect">
-                        <option value="">请选择知识空间</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>文档名称（可选，不填则自动生成）</label>
-                    <input type="text" id="textDocName" placeholder="用于在该空间内唯一标识此文本">
-                </div>
-                <div class="form-group">
-                    <label>内容</label>
-                    <textarea id="textContent" placeholder="请输入要存储的文本内容..."></textarea>
-                </div>
-                <div class="form-group">
-                    <label>其他元数据 (JSON，可选)</label>
-                    <input type="text" id="textMetadata" placeholder='{"key": "value"}'>
-                </div>
-                <div id="textUploadStatus" class="modal-status"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeUploadTextModal()">取消</button>
-                <button type="button" class="btn" onclick="uploadText()">上传</button>
-            </div>
-        </div>
-    </div>
-
     <!-- 知识库检索弹窗 -->
     <div id="searchModal" class="modal-overlay">
         <div class="modal" style="max-width: 700px;">
@@ -335,16 +299,6 @@
                 <div class="form-group">
                     <label>搜索关键词</label>
                     <input type="text" id="searchQuery" placeholder="输入关键词搜索...">
-                </div>
-                <div class="form-group" style="display: flex; gap: 12px; align-items: center;">
-                    <div style="flex: 1;">
-                        <label>返回数量</label>
-                        <input type="number" id="topK" value="5" min="1" max="20" style="width: 100%;">
-                    </div>
-                    <div style="flex: 1;">
-                        <label>相似度阈值 (0.0-1.0，建议0.3-0.5)</label>
-                        <input type="number" id="similarityThreshold" value="0.3" min="0" max="1" step="0.05" style="width: 100%;">
-                    </div>
                 </div>
                 <div id="searchStatus" class="modal-status"></div>
                 <div id="searchResults" style="margin-top: 16px; max-height: 400px; overflow-y: auto;"></div>
@@ -416,7 +370,6 @@
                 return '<option value="' + s.id + '">' + escapeHtml(s.name) + '</option>';
             }).join('');
             document.getElementById('docSpaceSelect').innerHTML = '<option value="">请选择知识空间</option>' + opts;
-            document.getElementById('textSpaceSelect').innerHTML = '<option value="">请选择知识空间</option>' + opts;
         }
 
         function renderSpaceList() {
@@ -532,8 +485,14 @@
             var contentEl = document.getElementById('detailContent');
             try {
                 var response = await fetch('/api/knowledge/documents/chunks?spaceId=' + spaceId + '&filename=' + encodeURIComponent(documentName));
-                var chunks = await response.json();
-                if (chunks && chunks.length > 0) {
+                if (!response.ok) {
+                    contentEl.innerHTML = '<p style="color:#999;">暂无内容或服务不可用。（' + response.status + '）</p>';
+                    return;
+                }
+                var data = await response.json();
+                // 后端返回 { chunks: [...] }，兼容直接数组
+                var chunks = (data && data.chunks) ? data.chunks : (Array.isArray(data) ? data : []);
+                if (chunks.length > 0) {
                     contentEl.innerHTML = chunks.map(function(c) {
                         return '<div class="chunk-item">' + escapeHtml(c.content || '') + '</div>';
                     }).join('');
@@ -583,17 +542,6 @@
         }
         function closeUploadDocModal() {
             document.getElementById('uploadDocModal').classList.remove('show');
-        }
-        function openUploadTextModal() {
-            document.getElementById('textContent').value = '';
-            document.getElementById('textDocName').value = '';
-            document.getElementById('textMetadata').value = '';
-            document.getElementById('textSpaceSelect').value = spaces.length ? String(spaces[0].id) : '';
-            document.getElementById('textUploadStatus').textContent = '';
-            document.getElementById('uploadTextModal').classList.add('show');
-        }
-        function closeUploadTextModal() {
-            document.getElementById('uploadTextModal').classList.remove('show');
         }
 
         function openSpaceModal(id, name) {
@@ -697,8 +645,6 @@
 
         function openSearchModal() {
             document.getElementById('searchQuery').value = '';
-            document.getElementById('topK').value = '5';
-            document.getElementById('similarityThreshold').value = '0.3';
             document.getElementById('searchStatus').textContent = '';
             document.getElementById('searchResults').innerHTML = '';
             document.getElementById('searchModal').classList.add('show');
@@ -707,79 +653,18 @@
             document.getElementById('searchModal').classList.remove('show');
         }
 
-        async function uploadText() {
-            var textInput = document.getElementById('textContent');
-            var spaceSelect = document.getElementById('textSpaceSelect');
-            var docNameInput = document.getElementById('textDocName');
-            var metadataInput = document.getElementById('textMetadata');
-            var statusDiv = document.getElementById('textUploadStatus');
-            var spaceId = spaceSelect.value ? spaceSelect.value.trim() : '';
-            if (!spaceId) {
-                statusDiv.innerHTML = '<span style="color: red;">请选择知识空间</span>';
-                return;
-            }
-            if (!textInput.value.trim()) {
-                statusDiv.innerHTML = '<span style="color: red;">请输入内容</span>';
-                return;
-            }
-            var metadata = { spaceId: Number(spaceId) };
-            if (docNameInput.value.trim()) metadata.source = docNameInput.value.trim();
-            try {
-                if (metadataInput.value.trim()) {
-                    var extra = JSON.parse(metadataInput.value);
-                    for (var k in extra) if (extra.hasOwnProperty(k) && k !== 'spaceId' && k !== 'source') metadata[k] = extra[k];
-                }
-            } catch (e) {
-                statusDiv.innerHTML = '<span style="color: red;">其他元数据格式错误 (必须是JSON)</span>';
-                return;
-            }
-            statusDiv.textContent = '上传中...';
-            try {
-                var response = await fetch('/api/knowledge/upload-text', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: textInput.value, metadata: metadata })
-                });
-                var result = await response.json();
-                if (result.success) {
-                    statusDiv.innerHTML = '<span style="color: green;">' + result.message + ' (块数: ' + result.documentCount + ')</span>';
-                    textInput.value = '';
-                    docNameInput.value = '';
-                    if (selectedSpaceId === Number(spaceId)) {
-                        docPage = 0;
-                        loadDocsInSpace(selectedSpaceId, 0);
-                    }
-                    loadSpaces();
-                    setTimeout(closeUploadTextModal, 800);
-                } else {
-                    statusDiv.innerHTML = '<span style="color: red;">' + (result.message || '上传失败') + '</span>';
-                }
-            } catch (error) {
-                statusDiv.innerHTML = '<span style="color: red;">请求失败: ' + escapeHtml(error.message) + '</span>';
-            }
-        }
-
         async function searchKnowledge() {
             var queryInput = document.getElementById('searchQuery');
-            var topKInput = document.getElementById('topK');
-            var thresholdInput = document.getElementById('similarityThreshold');
             var statusDiv = document.getElementById('searchStatus');
             var resultsDiv = document.getElementById('searchResults');
             if (!queryInput.value.trim()) {
                 statusDiv.innerHTML = '<span style="color: red;">请输入搜索关键词</span>';
                 return;
             }
-            var threshold = thresholdInput.value ? parseFloat(thresholdInput.value) : 0.3;
-            if (isNaN(threshold) || threshold < 0 || threshold > 1) {
-                statusDiv.innerHTML = '<span style="color: red;">相似度阈值必须在 0.0-1.0 之间</span>';
-                return;
-            }
             statusDiv.textContent = '搜索中...';
             resultsDiv.innerHTML = '';
             try {
-                var url = '/api/knowledge/search?query=' + encodeURIComponent(queryInput.value) + 
-                    '&topK=' + topKInput.value + 
-                    '&similarityThreshold=' + threshold;
+                var url = '/api/knowledge/search?query=' + encodeURIComponent(queryInput.value);
                 var response = await fetch(url);
                 var data = await response.json();
                 statusDiv.textContent = '';
@@ -796,17 +681,29 @@
                 
                 var results = data.results || data; // 兼容旧格式（直接返回数组）
                 if (!results || (Array.isArray(results) && results.length === 0)) {
-                    resultsDiv.innerHTML = queryInfo + '<p style="color:#666; padding:12px;">未找到相关内容。建议：<br>1. 降低相似度阈值（如0.2-0.3）<br>2. 增加返回数量<br>3. 使用更完整的查询文本</p>';
+                    resultsDiv.innerHTML = queryInfo + '<p style="color:#666; padding:12px;">未找到相关内容。建议使用更完整的查询文本。</p>';
                     return;
                 }
                 
                 var resultsList = Array.isArray(results) ? results : [];
                 resultsDiv.innerHTML = queryInfo + resultsList.map(function(item, idx) {
                     var similarity = item.similarity != null ? (item.similarity * 100).toFixed(2) + '%' : 'N/A';
-                    var filename = (item.metadata && item.metadata.filename) || '未知';
+                    // 尝试从多个可能的字段获取文件名
+                    var metadata = item.metadata || {};
+                    var filename = metadata.filename || metadata.documentName || metadata.source;
+                    // 如果还是没有，尝试从其他字段组合显示
+                    if (!filename) {
+                        if (metadata.space_id) {
+                            filename = '空间ID:' + metadata.space_id;
+                        } else if (metadata.chunk_index !== undefined) {
+                            filename = '块索引:' + metadata.chunk_index;
+                        } else {
+                            filename = '未知';
+                        }
+                    }
                     return '<div class="result-item" style="margin-bottom: 12px;">' +
                         '<div class="result-meta" style="font-size: 12px; color: #666; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">' +
-                        '<span># ' + (idx + 1) + ' | 相似度: <strong>' + similarity + '</strong> | 来源: ' + escapeHtml(filename) + '</span>' +
+                        '<span># ' + (idx + 1) + ' | 相似度: <strong>' + similarity + '</strong> | 来源: ' + escapeHtml(String(filename)) + '</span>' +
                         '</div>' +
                         '<div class="result-content" style="font-size: 13px; line-height: 1.6; white-space: pre-wrap; max-height: 200px; overflow-y: auto; padding: 8px; background: #fafafa; border-radius: 4px;">' + 
                         escapeHtml(item.content) + 

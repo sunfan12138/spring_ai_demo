@@ -26,7 +26,7 @@ public class KnowledgeDocumentRepository {
                 document_name VARCHAR(500) NOT NULL,
                 chunk_count INT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                raw_data BLOB,
+                raw_data LONGBLOB,
                 file_type VARCHAR(255),
                 file_size BIGINT
             )

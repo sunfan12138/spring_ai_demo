@@ -36,7 +36,7 @@ public class RagService {
         log.info("使用 RAG 回答用户问题: {}", userMessage);
 
         // 1. 从知识库检索相关知识
-        List<Document> relevantDocs = knowledgeBaseService.search(userMessage, 5, null);
+        List<Document> relevantDocs = knowledgeBaseService.search(userMessage, 10, null);
 
         // 2. 构建包含知识的提示词
         String context = buildContext(relevantDocs);
@@ -65,7 +65,7 @@ public class RagService {
         log.info("使用 RAG 流式回答用户问题: {}", userMessage);
 
         // 1. 从知识库检索相关知识
-        List<Document> relevantDocs = knowledgeBaseService.search(userMessage, 5, null);
+        List<Document> relevantDocs = knowledgeBaseService.search(userMessage, 10, null);
 
         // 2. 构建包含知识的提示词
         String context = buildContext(relevantDocs);
