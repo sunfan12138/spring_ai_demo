@@ -10,4 +10,8 @@ public class ConversationMetadata {
     private String title;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** 逻辑删除标记 */
+    private Boolean deleted;
+    /** 逻辑删除时间 */
+    private LocalDateTime deletedAt;
 }

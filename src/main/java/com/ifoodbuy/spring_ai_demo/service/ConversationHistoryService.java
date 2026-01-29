@@ -9,8 +9,10 @@ import com.ifoodbuy.spring_ai_demo.repository.ConversationMetadataRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -62,6 +64,9 @@ public class ConversationHistoryService {
     }
 
     public ConversationDetailResponse getConversation(String conversationId) {
+        if (metadataRepository.findById(conversationId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "对话不存在或已删除");
+        }
         List<Message> messages = chatMemoryRepository.findByConversationId(conversationId);
         List<MessageResponse> messageResponses = messages.stream()
                         .map(this::toDto)
@@ -69,9 +74,9 @@ public class ConversationHistoryService {
         return new ConversationDetailResponse(conversationId, messageResponses);
     }
 
+    /** 逻辑删除对话：仅标记 metadata 为已删除，不删除聊天消息（可恢复） */
     @Transactional
     public void deleteConversation(String conversationId) {
-        chatMemoryRepository.deleteByConversationId(conversationId);
         metadataRepository.deleteById(conversationId);
     }
 

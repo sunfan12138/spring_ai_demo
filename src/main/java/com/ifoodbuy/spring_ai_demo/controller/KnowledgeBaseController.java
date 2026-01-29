@@ -8,6 +8,7 @@ import com.ifoodbuy.spring_ai_demo.repository.KnowledgeSpaceRepository;
 import com.ifoodbuy.spring_ai_demo.service.KnowledgeBaseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.document.Document;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -127,84 +130,64 @@ public class KnowledgeBaseController {
     /**
      * 搜索知识库
      */
-    @GetMapping("/search")
-    public ResponseEntity<SearchKnowledgeResponse> search(@ModelAttribute SearchRequest request) {
-        if (request.getQuery() == null || request.getQuery().isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-        String query = request.getQuery();
-        int topK = request.getTopK() != null ? request.getTopK() : 5;
+    @GetMapping("/search") // 建议明确指定请求方式
+    public ResponseEntity<SearchKnowledgeResponse> search(SearchRequest request) {
+        // 限制 topK 范围，防止因前端恶意传参导致内存溢出
+        int topK = (request.getTopK() != null) ? Math.min(Math.max(request.getTopK(), 1), 50) : 5;
+
+        // 默认相似度阈值由 Service 层控制，这里仅做透传
         Double similarityThreshold = request.getSimilarityThreshold();
-        try {
-            var searchResult = knowledgeBaseService.searchWithRewrite(query, topK, similarityThreshold);
-            List<Document> documents = searchResult.documents();
 
-            List<SearchResponse> responses = documents.stream()
-                    .map(doc -> {
-                        // 从文档中提取相似度（如果有）
-                        // Milvus COSINE 距离：距离越小越相似，范围通常 0-2（归一化后约 0-1）
-                        // 相似度 = 1 - 距离（对于归一化的 COSINE 距离）
-                        Double similarity = null;
-                        if (doc.getMetadata().containsKey("distance")) {
-                            Object distance = doc.getMetadata().get("distance");
-                            if (distance instanceof Number) {
-                                double dist = ((Number) distance).doubleValue();
-                                // COSINE 距离转相似度：相似度 = 1 - 距离
-                                // 如果距离 > 1，可能是未归一化，使用 max(0, 1 - dist) 确保非负
-                                similarity = Math.max(0.0, 1.0 - dist);
-                            }
-                        }
+        // 2. 调用优化后的 Service 方法（含重写和前缀）
+        var searchResult = knowledgeBaseService.searchWithRewrite(request.getQuery(), topK, similarityThreshold);
+        List<Document> documents = searchResult.documents();
 
-                        return new SearchResponse(
-                                doc.getFormattedContent(),
-                                doc.getMetadata(),
-                                similarity
-                        );
-                    })
-                    .collect(Collectors.toList());
+        // 3. 流式转换并精简元数据
+        List<SearchResponse> responses = documents.stream()
+                .map(doc -> {
+                    Double similarity = calculateSimilarity(doc.getMetadata().get("distance"));
 
-            SearchKnowledgeResponse response = new SearchKnowledgeResponse(
-                    searchResult.originalQuery(),
-                    searchResult.rewrittenQuery(),
-                    responses
-            );
+                    // 可以在这里移除一些不需要给前端展示的敏感元数据，如 space_id
+                    Map<String, Object> cleanMetadata = new HashMap<>(doc.getMetadata());
+                    cleanMetadata.remove("distance"); // 已经单独提取，从 Map 中移除
 
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("搜索失败", e);
-            return ResponseEntity.status(500).build();
-        }
+                    return new SearchResponse(
+                            doc.getFormattedContent(),
+                            cleanMetadata,
+                            similarity
+                    );
+                })
+                .collect(Collectors.toList());
+
+        SearchKnowledgeResponse response = new SearchKnowledgeResponse(
+                searchResult.originalQuery(),
+                searchResult.rewrittenQuery(),
+                responses
+        );
+
+        return ResponseEntity.ok(response);
     }
 
     /**
-     * 按空间分组列出已上传知识库（仅依赖 MySQL）
+     * 提取并归一化相似度评分
      */
-    @GetMapping("/list")
-    public ResponseEntity<KnowledgeListResponse> listBySpace() {
-        List<KnowledgeDocument> all = knowledgeDocumentRepository.findAll();
-        Map<Long, List<KnowledgeListResponse.DocumentItem>> bySpaceId = new LinkedHashMap<>();
-        for (KnowledgeDocument doc : all) {
-            Long sid = doc.getSpaceId();
-            String spaceName = knowledgeSpaceRepository.findById(sid != null ? sid : 0L).map(KnowledgeSpace::getName).orElse("");
-            bySpaceId.computeIfAbsent(sid != null ? sid : 0L, k -> new ArrayList<>()).add(
-                    new KnowledgeListResponse.DocumentItem(
-                            doc.getId(),
-                            sid,
-                            spaceName,
-                            doc.getDocumentName(),
-                            doc.getChunkCount(),
-                            doc.getCreatedAt(),
-                            doc.getFileType(),
-                            doc.getFileSize()
-                    )
-            );
+    private Double calculateSimilarity(Object distanceObj) {
+        if (distanceObj instanceof Number) {
+            double dist = ((Number) distanceObj).doubleValue();
+
+            // 对于 Milvus 的 COSINE 度量：
+            // 1. 值范围通常在 [0, 2] 之间。
+            // 2. 0 代表完全一致，2 代表完全相反。
+            // 3. 我们需要的相似度 = 1 - (dist / 1.0) 或者是直接 1 - dist (取决于 Milvus 返回是否已平方)
+            // 在 BGE 模型下，通常使用 1.0 - dist 并截断
+            double similarity = 1.0 - dist;
+
+            // 确保结果在 0.0 - 1.0 之间，并保留 4 位小数提升展示美观度
+            return BigDecimal.valueOf(Math.max(0.0, Math.min(1.0, similarity)))
+                    .setScale(4, RoundingMode.HALF_UP)
+                    .doubleValue();
         }
-        List<KnowledgeListResponse.SpaceGroup> spaces = bySpaceId.entrySet().stream()
-                .map(e -> new KnowledgeListResponse.SpaceGroup(
-                        knowledgeSpaceRepository.findById(e.getKey()).map(KnowledgeSpace::getName).orElse(""),
-                        e.getValue()))
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(new KnowledgeListResponse(spaces, null, null, null, null));
+        return null;
     }
 
     /**
@@ -212,8 +195,8 @@ public class KnowledgeBaseController {
      */
     @GetMapping("/list/paged")
     public ResponseEntity<KnowledgeListResponse> listPaged(@ModelAttribute PageRequest request) {
-        int page = request.getPage() != null ? request.getPage() : 0;
-        int size = request.getSize() != null ? request.getSize() : 20;
+        int page = request.getPage();
+        int size = request.getSize();
         if (page < 0) page = 0;
         if (size < 1 || size > 100) size = 20;
         long total = knowledgeDocumentRepository.count();

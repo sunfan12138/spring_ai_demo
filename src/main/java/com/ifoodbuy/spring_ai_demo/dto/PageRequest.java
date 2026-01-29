@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PageRequest {
     /** 页码，从 0 开始，默认 0 */
-    private Integer page;
+    private Integer page = 0;
     /** 每页大小，默认 20 */
-    private Integer size;
+    private Integer size = 20;
 }

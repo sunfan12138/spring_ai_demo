@@ -2,6 +2,11 @@ package com.ifoodbuy.spring_ai_demo.service;
 
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeDocumentRepository;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeSpaceRepository;
+import io.milvus.client.MilvusClient;
+import io.milvus.grpc.QueryResults;
+import io.milvus.param.R;
+import io.milvus.param.dml.QueryParam;
+import io.milvus.response.QueryResultsWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -22,9 +27,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 知识库服务
@@ -40,6 +44,7 @@ public class KnowledgeBaseService {
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeSpaceRepository knowledgeSpaceRepository;
     private final ChatModel chatModel;
+    private final MilvusClient milvusClient;
 
     // 使用 TokenTextSplitter builder 创建
     // 对于 ONNX all-MiniLM-L6-v2 模型，最大 token 数为 512，因此设置 chunkSize 为 400 比较安全
@@ -95,9 +100,17 @@ public class KnowledgeBaseService {
 
         // 先分割文档
         List<Document> processedDocuments = textSplitter.apply(documents);
-
-        // 为分割后的每个文档块添加元数据
-        processedDocuments.forEach(doc -> doc.getMetadata().putAll(docMetadata));
+        // 关键优化：为每个块注入唯一的顺序索引 (chunk_index)
+        for (int i = 0; i < processedDocuments.size(); i++) {
+            Document doc = processedDocuments.get(i);
+            // 复制一份基础元数据，避免所有 doc 共享同一个 Map 导致并发风险（如果有的话）
+            Map<String, Object> currentMetadata = new HashMap<>(docMetadata);
+            // 注入块索引：从 0 开始
+            currentMetadata.put("chunk_index", i);
+            // 可选：记录总分块数，方便校验完整性
+            currentMetadata.put("total_chunks", processedDocuments.size());
+            doc.getMetadata().putAll(currentMetadata);
+        }
 
         // 存储到向量数据库
         vectorStore.add(processedDocuments);
@@ -225,59 +238,47 @@ public class KnowledgeBaseService {
      * @return 搜索结果信息（包含重写后的查询和文档列表）
      */
     public SearchResult searchWithRewrite(String query, int topK, Double similarityThreshold) {
-        if (query == null || query.trim().isEmpty()) {
+        if (StringUtils.isBlank(query)) {
             log.warn("搜索查询为空");
             return new SearchResult(query, query, List.of());
         }
 
         String originalQuery = query.trim();
 
-        // 查询重写：使用 LLM 优化查询文本
+        // 1. 查询重写：LLM 优化
         String rewrittenQuery = rewriteQuery(originalQuery);
 
-        // 默认阈值降低到0.3，以提高召回率（特别是对于部分文本匹配）
-        double threshold = similarityThreshold != null && similarityThreshold >= 0.0 && similarityThreshold <= 1.0
-                ? similarityThreshold : 0.3;
+        // 2. 注入 BGE-Small-ZH-v1.5 检索指令前缀 (非常关键，提升部分匹配召回率)
+        // 只有在检索时（Query）才加，存库（Document）时不加
+        String finalQuery = "为这个句子生成表示以用于检索相关文章：" + rewrittenQuery;
 
-        // 对于短查询文本，进一步降低阈值以提高召回率
-        if (rewrittenQuery.length() < 20) {
-            threshold = Math.min(threshold, 0.2); // 短文本使用更低的阈值
-            log.info("查询文本较短 ({} 字符)，自动降低阈值到 {}", rewrittenQuery.length(), threshold);
+        // 3. 动态阈值逻辑优化
+        // BGE-v1.5 的 COSINE 分数通常在 0.5-0.7 波动，0.3 是个合理的召回门槛
+        double threshold = (similarityThreshold != null && similarityThreshold >= 0.0)
+                ? similarityThreshold : 0.35;
+
+        // 针对超短文本或长重写文本微调阈值
+        if (rewrittenQuery.length() < 10) {
+            threshold = 0.25;
+            log.info("短文本查询，降低相似度阈值至 {}", threshold);
         }
 
-        log.info("搜索知识库，原查询: \"{}\", 重写后: \"{}\" (长度: {}), topK: {}, 相似度阈值: {}",
-                originalQuery.length() > 50 ? originalQuery.substring(0, 50) + "..." : originalQuery,
-                rewrittenQuery.length() > 50 ? rewrittenQuery.substring(0, 50) + "..." : rewrittenQuery,
-                rewrittenQuery.length(), topK, threshold);
+        // 4. HNSW 索引参数适配 (不再使用 nprobe)
+        // ef 指搜索时探索的节点数，通常设为 topK 的 2-4 倍，最小建议 64
+        int ef = Math.max(topK * 4, 64);
 
-        // 使用 MilvusSearchRequest 以支持 Milvus 特定参数
-        // 对于 IVF_FLAT 索引，增加 nprobe 参数以提高召回率
-        int nprobe = rewrittenQuery.length() < 20 ? 512 : 256;
+        log.info("开始检索知识库 - 算法配置: HNSW, ef: {}, 相似度阈值: {}", ef, threshold);
+
+        // 5. 构建针对 Milvus HNSW 优化的请求
         MilvusSearchRequest searchRequest = MilvusSearchRequest.milvusBuilder()
-                .query(rewrittenQuery) // 使用重写后的查询
-                .topK(Math.max(topK * 2, 20)) // 请求更多结果，然后在应用阈值后筛选
+                .query(finalQuery)
+                .topK(Math.max(topK * 3, 30)) // 扩大取样范围，增加容错
                 .similarityThreshold(threshold)
-                .searchParamsJson("{\"nprobe\":" + nprobe + "}") // 动态调整 nprobe
+                .searchParamsJson("{\"ef\":" + ef + "}") // HNSW 专用参数
                 .build();
 
         List<Document> results = vectorStore.similaritySearch(searchRequest);
-
-        // 记录每个结果的距离信息（用于调试）
-        if (log.isDebugEnabled() && !results.isEmpty()) {
-            for (int i = 0; i < Math.min(results.size(), 3); i++) {
-                Document doc = results.get(i);
-                Object distance = doc.getMetadata().get("distance");
-                if (distance != null) {
-                    double dist = ((Number) distance).doubleValue();
-                    double sim = 1.0 - dist; // COSINE距离转相似度
-                    log.debug("结果 {}: 距离={}, 相似度={}, 内容预览={}",
-                            i + 1, dist, sim,
-                            doc.getFormattedContent().length() > 50 ? doc.getFormattedContent().substring(0, 50) + "..." : doc.getFormattedContent());
-                }
-            }
-        }
-
-        log.info("搜索完成，找到 {} 个相关文档", results.size());
+        log.info("搜索完成，召回文档块数量: {}", results.size());
         return new SearchResult(originalQuery, rewrittenQuery, results);
     }
 
@@ -308,20 +309,61 @@ public class KnowledgeBaseService {
      * @return 文档块列表
      */
     public List<Document> searchChunksBySpaceIdAndFilename(Long spaceId, String filename) {
-        FilterExpressionBuilder b = new FilterExpressionBuilder();
-        Filter.Expression filterExpression = b.and(
-                b.eq("space_id", spaceId != null ? spaceId : 0L),
-                b.eq("filename", filename != null ? filename : "")
-        ).build();
-
-        MilvusSearchRequest request = MilvusSearchRequest.milvusBuilder()
-                .query(" ")
-                .topK(500)
-                .similarityThreshold(0.0)
-                .filterExpression(filterExpression)
-                .searchParamsJson("{\"nprobe\":128}")
+        String expr = String.format("space_id == %d && filename == '%s'", spaceId, filename);
+        QueryParam queryParam = QueryParam.newBuilder()
+                .withCollectionName("knowledge_base")
+                .withExpr(expr)
+                .withOutFields(Arrays.asList("content", "metadata")) // 只查你需要的字段
                 .build();
-        return vectorStore.similaritySearch(request);
+
+        R<QueryResults> response = milvusClient.query(queryParam);
+        // 随后将 QueryResults 转换为 Spring AI 的 Document 对象
+        return convertToSpringAIDocuments(response);
+    }
+
+    /**
+     * 将 Milvus 原生 QueryResults 转换为 Spring AI Document
+     */
+    private List<Document> convertToSpringAIDocuments(R<QueryResults> response) {
+        if (response == null || response.getData() == null) {
+            return Collections.emptyList();
+        }
+
+        List<Document> documents = new ArrayList<>();
+
+        // 使用 QueryResultsWrapper 方便地按行处理数据
+        QueryResultsWrapper wrapper = new QueryResultsWrapper(response.getData());
+        List<QueryResultsWrapper.RowRecord> rows = wrapper.getRowRecords();
+
+        for (QueryResultsWrapper.RowRecord row : rows) {
+            // 1. 提取核心内容字段 (假设你在 Milvus 中定义的文本字段名为 "content")
+            String content = row.get("content").toString();
+
+            // 2. 提取元数据字段 (Metadata)
+            // Spring AI 的 Document 构造函数接受一个 Map<String, Object>
+            Map<String, Object> metadata = new HashMap<>();
+
+            // 遍历行中所有的字段，将非内容字段存入 metadata
+            row.getFieldValues().forEach((key, value) -> {
+                if (!"content".equals(key) && !"embedding".equals(key)) {
+                    metadata.put(key, value);
+                }
+            });
+
+            // 3. 提取 ID (如果有)
+            String id = row.get("id") != null ? row.get("id").toString() : UUID.randomUUID().toString();
+
+            // 4. 构建 Spring AI Document 对象
+            Document document = new Document(id, content, metadata);
+            documents.add(document);
+        }
+
+        return documents.stream()
+                .sorted(Comparator.comparingInt(doc -> {
+                    Object idx = doc.getMetadata().get("chunk_index");
+                    return idx instanceof Number ? ((Number) idx).intValue() : 0;
+                }))
+                .collect(Collectors.toList());
     }
 
     /**

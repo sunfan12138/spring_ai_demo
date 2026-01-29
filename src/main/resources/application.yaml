@@ -13,13 +13,12 @@ spring:
     # OpenAI 配置（兼容智谱 AI）
     openai:
       # API 密钥配置：从环境变量读取，如果未设置则使用默认值（请替换为你的实际 API 密钥）
-      api-key: ${BAILIAN_API_KEY}
+      api-key: ${MODELSCOPE_API_KEY}
       chat:
         options:
-          model: deepseek-v3.2
-          temperature: 0.7
+          model: deepseek-ai/DeepSeek-V3.2
         completions-path: /v1/chat/completions
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/
+      base-url: https://api-inference.modelscope.cn/
 
     # 重试配置（处理 429 限流错误）
     retry:
@@ -72,18 +71,18 @@ spring:
           host: localhost
           port: 19530
           username: root
-          password: milvus   # 官方默认小写；若启用认证请与 Milvus 配置一致
-        # 数据库和集合配置
+          password: milvus
         database-name: default
         collection-name: knowledge_base
-        # Schema 配置
-        initialize-schema: true  # 必须显式设置为 true 才会初始化 schema
-        embedding-dimension: 512  # BGE-small-zh-v1.5 为 512
-        # 索引配置
-        index-type: IVF_FLAT  # 可选: IVF_FLAT, HNSW, AUTOINDEX 等
-        metric-type: COSINE  # 可选: COSINE, L2, IP
-        # 索引参数（对于 IVF_FLAT，建议设置 nprobe）
-        index-parameters: '{"nlist":1024}'
+        initialize-schema: true
+        embedding-dimension: 512
+        # --- 关键优化部分 ---
+        index-type: HNSW  # 将 IVF_FLAT 改为 HNSW
+        metric-type: COSINE  # BGE 模型必须使用 COSINE
+        # HNSW 的核心参数：
+        # M: 每个节点的最大邻居数，范围 4-64，越大精度越高但内存消耗也越大
+        # efConstruction: 构建索引时的搜索范围，范围 8-512，越大索引质量越高
+        index-parameters: '{"M":16, "efConstruction":128}'
 
 # 服务器配置
 server:
