@@ -1,5 +1,6 @@
 package com.ifoodbuy.spring_ai_demo.service;
 
+import com.ifoodbuy.spring_ai_demo.config.RagConfig;
 import com.ifoodbuy.spring_ai_demo.dto.UploadDocumentRequest;
 import com.ifoodbuy.spring_ai_demo.entity.KnowledgeDocument;
 import com.ifoodbuy.spring_ai_demo.entity.KnowledgeSpace;
@@ -27,6 +28,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * 知识库服务
@@ -42,6 +44,7 @@ public class KnowledgeBaseService {
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeSpaceRepository knowledgeSpaceRepository;
     private final ChatModel chatModel;
+    private final RagConfig ragConfig;
 
     // 使用 TokenTextSplitter builder 创建
     // 对于 ONNX all-MiniLM-L6-v2 模型，最大 token 数为 512，因此设置 chunkSize 为 400 比较安全
@@ -189,22 +192,80 @@ public class KnowledgeBaseService {
         }
 
         // 4. HNSW 索引参数适配 (不再使用 nprobe)
-        // ef 指搜索时探索的节点数，通常设为 topK 的 2-4 倍，最小建议 64
-        int ef = Math.max(topK * 4, 64);
+        int candidateK = Math.max(topK * ragConfig.getRerank().getCandidateMultiplier(), 30);
+        int ef = Math.max(candidateK * 2, 64);
 
-        log.info("开始检索知识库 - 算法配置: HNSW, ef: {}, 相似度阈值: {}", ef, threshold);
+        log.info("开始检索知识库 - 候选数: {}, ef: {}, 相似度阈值: {}, 混合权重 vector={} bm25={}",
+                candidateK, ef, threshold, ragConfig.getHybrid().getVectorWeight(), ragConfig.getHybrid().getBm25Weight());
 
-        // 5. 构建针对 Milvus HNSW 优化的请求
+        // 5. 向量检索：多召回候选用于后续 BM25 融合与重排
         MilvusSearchRequest searchRequest = MilvusSearchRequest.milvusBuilder()
                 .query(finalQuery)
-                .topK(Math.max(topK, 10)) // 扩大取样范围，增加容错
+                .topK(candidateK)
                 .similarityThreshold(threshold)
-                .searchParamsJson("{\"ef\":" + ef + "}") // HNSW 专用参数
+                .searchParamsJson("{\"ef\":" + ef + "}")
                 .build();
 
-        List<Document> results = vectorStore.similaritySearch(searchRequest);
-        log.info("搜索完成，召回文档块数量: {}", results.size());
+        List<Document> candidates = vectorStore.similaritySearch(searchRequest);
+        if (candidates.isEmpty()) {
+            return new SearchResult(originalQuery, rewrittenQuery, List.of());
+        }
+
+        // 6. 应用层 BM25 权重 + 重排：对候选集算 BM25 分，与向量分加权融合后排序取 topK
+        List<Document> results = hybridRerank(originalQuery, candidates, topK);
+        log.info("搜索完成，召回候选: {}, 重排后: {}", candidates.size(), results.size());
         return new SearchResult(originalQuery, rewrittenQuery, results);
+    }
+
+    /**
+     * 混合检索重排：向量相似度 + BM25 关键词得分加权融合，按综合分排序后取 topK。
+     */
+    private List<Document> hybridRerank(String query, List<Document> candidates, int topK) {
+        if (candidates.isEmpty()) return List.of();
+        List<String> contents = candidates.stream()
+                .map(doc -> doc.getText() != null ? doc.getText() : "")
+                .toList();
+        Bm25Scorer.DocStats stats = Bm25Scorer.buildDocStats(contents);
+
+        // 向量分：从 metadata 的 distance 转为相似度 (1 - distance)，并做 min-max 归一化到 [0,1]
+        double[] vectorScores = new double[candidates.size()];
+        double vMin = Double.MAX_VALUE, vMax = Double.MIN_VALUE;
+        for (int i = 0; i < candidates.size(); i++) {
+            Object dist = candidates.get(i).getMetadata().get("distance");
+            double sim = (dist instanceof Number n) ? (1.0 - n.doubleValue()) : 0.0;
+            vectorScores[i] = Math.max(0.0, Math.min(1.0, sim));
+            vMin = Math.min(vMin, vectorScores[i]);
+            vMax = Math.max(vMax, vectorScores[i]);
+        }
+        double vRange = (vMax - vMin) > 1e-9 ? (vMax - vMin) : 1.0;
+
+        // BM25 分并归一化到 [0,1]
+        double[] bm25Scores = new double[candidates.size()];
+        for (int i = 0; i < candidates.size(); i++) {
+            bm25Scores[i] = Bm25Scorer.score(query, contents.get(i),
+                    stats.docFreqs, stats.totalDocs, stats.avgDocLen);
+        }
+        double bMin = Arrays.stream(bm25Scores).min().orElse(0.0);
+        double bMax = Arrays.stream(bm25Scores).max().orElse(1.0);
+        double bRange = (bMax - bMin) > 1e-9 ? (bMax - bMin) : 1.0;
+
+        // 加权融合并排序
+        double nV = ragConfig.getHybrid().getVectorWeight();
+        double nB = ragConfig.getHybrid().getBm25Weight();
+        return IntStream.range(0, candidates.size())
+                .boxed()
+                .sorted(fusedScoreComparator(vectorScores, bm25Scores, vMin, vRange, bMin, bRange, nV, nB))
+                .limit(topK).map(candidates::get).toList();
+    }
+
+    private static Comparator<Integer> fusedScoreComparator(double[] vectorScores, double[] bm25Scores,
+                                                            double vMin, double vRange, double bMin, double bRange,
+                                                            double nV, double nB) {
+        return (a, b) -> {
+            double sa = nV * (vectorScores[a] - vMin) / vRange + nB * (bm25Scores[a] - bMin) / bRange;
+            double sb = nV * (vectorScores[b] - vMin) / vRange + nB * (bm25Scores[b] - bMin) / bRange;
+            return Double.compare(sb, sa);
+        };
     }
 
     /**
@@ -225,7 +286,9 @@ public class KnowledgeBaseService {
         return searchWithRewrite(query, topK, similarityThreshold).documents();
     }
 
-    /** 用于 RAG「由助手判断」时展示给模型的最大文档条数 */
+    /**
+     * 用于 RAG「由助手判断」时展示给模型的最大文档条数
+     */
     private static final int MAX_DOCUMENT_LIST_SIZE = 200;
 
     /**
@@ -254,7 +317,7 @@ public class KnowledgeBaseService {
      * 按空间 ID 和文档名查询该文档的所有块（用于「查看」预览）。
      * 向量库 metadata 使用 space_id + documentName 过滤。
      *
-     * @param spaceId  知识空间 ID
+     * @param spaceId      知识空间 ID
      * @param documentName 文档名（文件名或文本录入标识）
      * @return 文档块列表
      */

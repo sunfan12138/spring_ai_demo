@@ -81,6 +81,15 @@ spring:
         # efConstruction: 构建索引时的搜索范围，范围 8-512，越大索引质量越高
         index-parameters: '{"M":16, "efConstruction":128}'
 
+# RAG 混合检索与重排（应用层：向量 + BM25 权重融合后重排）
+app:
+  rag:
+    hybrid:
+      vector-weight: 0.7   # 向量检索权重
+      bm25-weight: 0.3     # BM25 关键词检索权重
+    rerank:
+      candidate-multiplier: 3  # 先召回 topK * 此倍数，再融合重排后取 topK
+
 # 服务器配置
 server:
   port: 8080
