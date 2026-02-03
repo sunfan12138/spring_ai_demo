@@ -1,6 +1,8 @@
 package com.ifoodbuy.spring_ai_demo.service;
 
 import com.ifoodbuy.spring_ai_demo.dto.UploadDocumentRequest;
+import com.ifoodbuy.spring_ai_demo.entity.KnowledgeDocument;
+import com.ifoodbuy.spring_ai_demo.entity.KnowledgeSpace;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeDocumentRepository;
 import com.ifoodbuy.spring_ai_demo.repository.KnowledgeSpaceRepository;
 import lombok.RequiredArgsConstructor;
@@ -223,20 +225,45 @@ public class KnowledgeBaseService {
         return searchWithRewrite(query, topK, similarityThreshold).documents();
     }
 
+    /** 用于 RAG「由助手判断」时展示给模型的最大文档条数 */
+    private static final int MAX_DOCUMENT_LIST_SIZE = 200;
+
+    /**
+     * 获取知识库中所有文档的名称列表（格式：空间名 - 文档名），供大模型判断是否调用知识库。
+     *
+     * @return 文档列表字符串，每行一条「序号. 空间名 - 文档名」；无文档时返回空字符串
+     */
+    public String getDocumentListForRag() {
+        List<KnowledgeDocument> docs = knowledgeDocumentRepository.findAll(0, MAX_DOCUMENT_LIST_SIZE);
+        if (docs.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < docs.size(); i++) {
+            KnowledgeDocument doc = docs.get(i);
+            String spaceName = knowledgeSpaceRepository.findById(doc.getSpaceId() != null ? doc.getSpaceId() : 0L)
+                    .map(KnowledgeSpace::getName)
+                    .orElse("未知空间");
+            String docName = doc.getDocumentName() != null ? doc.getDocumentName() : "未命名";
+            sb.append(i + 1).append(". ").append(spaceName).append(" - ").append(docName).append("\n");
+        }
+        return sb.toString().trim();
+    }
+
     /**
      * 按空间 ID 和文档名查询该文档的所有块（用于「查看」预览）。
-     * 向量库 metadata 使用 space_id + filename 过滤。
+     * 向量库 metadata 使用 space_id + documentName 过滤。
      *
      * @param spaceId  知识空间 ID
-     * @param filename 文档名（文件名或文本录入标识）
+     * @param documentName 文档名（文件名或文本录入标识）
      * @return 文档块列表
      */
-    public List<Document> searchChunksBySpaceIdAndFilename(Long spaceId, String filename) {
+    public List<Document> searchChunksBySpaceIdAndFilename(Long spaceId, String documentName) {
         // 1. 构建过滤表达式 (对应物理列 space_id 和 document_name)
         FilterExpressionBuilder b = new FilterExpressionBuilder();
         Filter.Expression filterExpression = b.and(
                 b.eq("space_id", spaceId),
-                b.eq("document_name", filename)
+                b.eq("document_name", documentName)
         ).build();
 
         // 2. 使用 MilvusSearchRequest

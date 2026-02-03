@@ -45,9 +45,10 @@ public class ChatService {
             String responseContent;
             
             if (useRag) {
-                // 使用 RAG（检索增强生成）
-                log.info("使用 RAG 模式回答用户问题");
-                responseContent = ragService.answerWithRag(userMessage, conversationId);
+                // 使用 RAG（检索增强生成），ragMode=auto 时由助手判断是否参考知识库
+                boolean autoMode = "auto".equalsIgnoreCase(request.getRagMode());
+                log.info("使用 RAG 模式回答用户问题, autoMode={}", autoMode);
+                responseContent = ragService.answerWithRag(userMessage, conversationId, autoMode);
             } else {
                 // 使用 ChatClient 调用 AI 模型
                 // MessageChatMemoryAdvisor 会自动：
@@ -100,9 +101,10 @@ public class ChatService {
         Flux<String> responseFlux;
         
         if (useRag) {
-            // 使用 RAG（检索增强生成）流式响应
-            log.info("使用 RAG 模式流式回答用户问题");
-            responseFlux = ragService.answerWithRagStream(userMessage, conversationId);
+            // 使用 RAG（检索增强生成）流式响应，ragMode=auto 时由助手判断是否参考知识库
+            boolean autoMode = "auto".equalsIgnoreCase(request.getRagMode());
+            log.info("使用 RAG 模式流式回答用户问题, autoMode={}", autoMode);
+            responseFlux = ragService.answerWithRagStream(userMessage, conversationId, autoMode);
         } else {
             // 使用 ChatClient 流式调用 AI 模型
             // MessageChatMemoryAdvisor 会自动：
